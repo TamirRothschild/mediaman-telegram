@@ -1,0 +1,153 @@
+הסבר של כל שלב ואיך לממש אותו
+
+⸻
+
+1. קבלת בקשה מהמשתמש
+	•	מה קורה:
+המשתמש שולח הודעה לבוט עם הפקודה /request <שם סרט>.
+	•	איך לממש ב‑Python:
+
+
+from telegram import Update
+from telegram.ext import CommandHandler, CallbackContext
+
+def request_movie(update: Update, context: CallbackContext):
+    movie_name = ' '.join(context.args)
+    # המשך לשלב החיפוש
+--- 
+2. חיפוש הסרט ב‑API חיצוני
+	•	מה קורה:
+הבוט שולח בקשה ל‑OMDb או IMDb API כדי לקבל רשימת סרטים עם שם, שנה, פוסטר.
+	•	איך לממש:
+
+import requests
+
+API_KEY = "your_omdb_key"
+url = f"http://www.omdbapi.com/?apikey={API_KEY}&s={movie_name}"
+response = requests.get(url).json()
+movies = response.get('Search', [])
+
+--- 
+
+3. הצגת אפשרויות לבחירה (Inline Keyboard)
+	•	מה קורה:
+הבוט מציג לכל משתמש רשימה של סרטים עם כפתורים לבחירה.
+	•	איך לממש:
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+keyboard = [
+    [InlineKeyboardButton(f"{m['Title']} ({m['Year']})", callback_data=m['imdbID'])]
+    for m in movies
+]
+reply_markup = InlineKeyboardMarkup(keyboard)
+update.message.reply_text('בחר סרט:', reply_markup=reply_markup)
+
+---
+
+
+4. המשתמש בוחר סרט
+	•	מה קורה:
+המשתמש לוחץ על כפתור → הבוט מקבל callback_query עם ה‑imdbID.
+	•	איך לממש:
+
+def button_callback(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+    selected_id = query.data
+    # שמירה ברשימת בקשות
+
+---
+
+
+5. שמירת בקשה ברשימת בקשות
+	•	מה קורה:
+הבוט שומר את הבחירה ב‑JSON או SQLite, יחד עם שם המשתמש, תאריך וסטטוס.
+	•	איך לממש:
+
+import json, datetime
+
+new_request = {
+    "user": update.effective_user.username,
+    "title": movie_title,
+    "year": movie_year,
+    "status": "pending",
+    "requested_at": datetime.datetime.now().isoformat()
+}
+
+with open("requests.json", "r+") as f:
+    data = json.load(f)
+    data.append(new_request)
+    f.seek(0)
+    json.dump(data, f, indent=4)
+
+---
+
+
+6. שליחת הודעת אישור למשתמש
+	•	מה קורה:
+הבוט שולח הודעה למשתמש:
+“הבקשה נשמרה בהצלחה!”
+	•	איך לממש:
+
+ query.edit_message_text(f"בקשתך ל-{movie_title} נשמרה!")
+
+ ---
+
+ 
+7. ניהול הרשימה למשתמש רגיל
+	•	מה קורה:
+משתמש רגיל יכול לבדוק רק את הבקשות שלו.
+	•	איך לממש:
+
+def my_requests(update: Update, context: CallbackContext):
+user = update.effective_user.username
+with open("requests.json") as f:
+    data = json.load(f)
+user_requests = [r for r in data if r["user"] == user]
+msg = "\n".join([f"{r['title']} ({r['year']}) - {r['status']}" for r in user_requests])
+update.message.reply_text(msg or "אין בקשות")   
+
+---
+
+
+8. פקודות אדמין
+	•	מה קורה:
+אדמין (אתה) יכול לראות את כל הבקשות, למחוק את הרשימה או לעדכן סטטוס.
+	•	איך לממש:
+
+ADMIN_ID = 123456789
+
+def list_all(update: Update, context: CallbackContext):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    with open("requests.json") as f:
+        data = json.load(f)
+    msg = "\n".join([f"{r['user']}: {r['title']} ({r['year']})" for r in data])
+    update.message.reply_text(msg)
+
+---
+
+
+9. טיפול במצב “המתנה”
+	•	אפשר להוסיף סטטוס לכל בקשה:
+	•	pending – ממתין לבחירה או טיפול
+	•	approved – הבקשה אושרה
+	•	done – הסרט נוסף לשרת
+	•	זה מאפשר למשתמשים לראות רק את הבקשות הפתוחות שלהם והאדמין לנהל את כולן.
+
+
+---
+
+10. הרצת הבוט על השרת
+	•	מומלץ להריץ כ‑systemd service ב‑Debian:
+	•	כדי שהבוט תמיד פעיל גם אחרי reboot
+	•	אפשר להשתמש ב‑python-telegram-bot עם long polling
+
+⸻
+
+💡 טיפים לפיתוח והרחבה
+	1.	הוספת logging – מי הוסיף איזה סרט ומתי
+	2.	שילוב עם Plex API – הוספה אוטומטית של סרטים מאושרים
+	3.	שימוש ב‑SQLite במקום JSON – למספר גדול של משתמשים
+	4.	אבטחה – לא לאפשר למשתמשים רגילים למחוק בקשות של אחרים

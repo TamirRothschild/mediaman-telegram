@@ -1,0 +1,35 @@
+[Start] 
+   |
+   v
+[User שולח בקשה לבוט: /request <שם סרט>]
+   |
+   v
+[Bot מקבל update מה-Telegram API]
+   |
+   v
+[Bot שולח בקשה ל-OMDb / IMDb API עם שם הסרט]
+   |
+   v
+[קבלת רשימת תוצאות אפשריות מה-API]
+   |
+   v
+[Bot מציג Inline Keyboard עם כל אפשרות למשתמש]
+   |
+   v
+[User בוחר סרט ספציפי]
+   |
+   v
+[Bot שומר את הבחירה ברשימת בקשות (JSON / SQLite)]
+   |
+   v
+[שליחת הודעת אישור למשתמש]
+   |
+   v
+[אם User = Admin?] ----Yes----> [פקודות אדמין: /list_all, /clear, /delete]
+   |                                     ^
+   No                                    |
+   |                                     
+[משתמש רואה רק בקשות שלו]
+   |
+   v
+[End / Waiting for next request]

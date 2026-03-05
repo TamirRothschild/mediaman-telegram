@@ -1,0 +1,35 @@
+[Start] 
+   |
+   v
+[User sends a request to the bot: /request <movie name>]
+   |
+   v
+[Bot receives an update from the Telegram API]
+   |
+   v
+[Bot sends a request to the OMDb / IMDb API with the movie name]
+   |
+   v
+[Receiving a list of possible results from the API]
+   |
+   v
+[Bot displays an Inline Keyboard with each option to the user]
+   |
+   v
+[User selects a specific movie]
+   |
+   v
+[Bot saves the selection in the requests list (JSON / SQLite)]
+   |
+   v
+[Sending a confirmation message to the user]
+   |
+   v
+[If User = Admin?] ----Yes----> [Admin commands: /list_all, /clear, /delete]
+   |                                     ^
+   No                                    |
+   |                                     
+[User sees only their own requests]
+   |
+   v
+[End / Waiting for next request]
