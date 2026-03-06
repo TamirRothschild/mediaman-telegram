@@ -208,7 +208,54 @@ async def all_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
+# ---------- Clear Requests ----------
 async def clear_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("Not allowed.")
+        return
+
+    keyboard = [
+        [
+            InlineKeyboardButton("Yes", callback_data="clear_step1_yes"),
+            InlineKeyboardButton("No", callback_data="clear_step1_no")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Are you sure you want to clear all requests?", reply_markup=reply_markup)
+
+
+# ---------- Callback for clear confirmation ----------
+async def clear_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+
+    if data == "clear_step1_no":
+        await query.edit_message_text("Clear requests canceled.")
+        return
+
+    if data == "clear_step1_yes":
+        # שלב שני
+        keyboard = [
+            [
+                InlineKeyboardButton("Yes, really!", callback_data="clear_step2_yes"),
+                InlineKeyboardButton("No, cancel", callback_data="clear_step2_no")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "Are you really sure you want to clear ALL requests?", reply_markup=reply_markup
+        )
+        return
+
+    if data == "clear_step2_no":
+        await query.edit_message_text("Clear requests canceled.")
+        return
+
+    if data == "clear_step2_yes":
+        clear_all_requests()
+        await query.edit_message_text("All requests have been cleared!")
 
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("Not allowed.")
@@ -260,7 +307,7 @@ def main():
 
     # Admin commands
     app.add_handler(CommandHandler("all_requests", all_requests))
-    app.add_handler(CommandHandler("clear_requests", clear_requests))
+  app.add_handler(CallbackQueryHandler(clear_callback, pattern="^clear_step"))
 
     # Callback handlers
     app.add_handler(CallbackQueryHandler(delete_callback, pattern="^del:"))
