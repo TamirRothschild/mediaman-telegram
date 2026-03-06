@@ -237,20 +237,32 @@ Admin
 
     await update.message.reply_text(text)
 
+# ---------- /start ----------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "שלום! 👋\n"
+        "ברוכים הבאים ל-MediaMan Bot.\n"
+        "אתם יכולים לבקש סרטים או סדרות, לראות את הבקשות שלכם ולמחוק אותן.\n\n"
+        "לרשימה מלאה של הפקודות הזינו /help"
+    )
+    await update.message.reply_text(text)
 
 # ---------- Main ----------
 def main():
-
     app = ApplicationBuilder().token(TOKEN).build()
 
+    # User commands
+    app.add_handler(CommandHandler("start", start))  # <-- כאן
     app.add_handler(CommandHandler("request", request_media))
     app.add_handler(CommandHandler("my_requests", my_requests))
     app.add_handler(CommandHandler("delete_request", delete_request))
     app.add_handler(CommandHandler("help", help_command))
 
+    # Admin commands
     app.add_handler(CommandHandler("all_requests", all_requests))
     app.add_handler(CommandHandler("clear_requests", clear_requests))
 
+    # Callback handlers
     app.add_handler(CallbackQueryHandler(delete_callback, pattern="^del:"))
     app.add_handler(CallbackQueryHandler(button_callback))
 
