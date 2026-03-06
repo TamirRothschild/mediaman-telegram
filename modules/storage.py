@@ -27,7 +27,9 @@ def add_request(user_id, movie):
     user_id = str(user_id)
     if user_id not in requests:
         requests[user_id] = []
-    requests[user_id].append(movie)
+    # Avoid duplicates
+    if not any(m["id"] == movie["id"] for m in requests[user_id]):
+        requests[user_id].append(movie)
     save_requests(requests)
 
 def get_user_requests(user_id):
@@ -42,3 +44,17 @@ def get_all_requests():
 def clear_all_requests():
     """Delete all requests (admin)"""
     save_requests({})
+
+def delete_user_request(user_id, movie_id):
+    """
+    Remove a movie from a user's requests by movie_id.
+    Returns True if removed, False if not found.
+    """
+    requests = load_requests()
+    user_id = str(user_id)
+    if user_id not in requests:
+        return False
+    original_len = len(requests[user_id])
+    requests[user_id] = [m for m in requests[user_id] if str(m["id"]) != str(movie_id)]
+    save_requests(requests)
+    return len(requests[user_id]) < original_len

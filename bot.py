@@ -1,140 +1,265 @@
 import os
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
-from modules.tmdb import search_movie
-from modules.storage import add_request, get_all_requests, clear_all_requests, get_user_requests
 
-# Load environment variables
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+)
+
+from modules.tmdb import search_media
+from modules.storage import (
+    add_request,
+    get_all_requests,
+    clear_all_requests,
+    get_user_requests,
+    delete_user_request,
+)
+
 load_dotenv()
+
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x]
 
-# ---------- Admin Helper ----------
+
+# ---------- Admin check ----------
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
-# ---------- /request command ----------
-async def request_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+# ---------- /request ----------
+async def request_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     if not context.args:
-        await update.message.reply_text("Please provide a movie name after the /request command")
+        await update.message.reply_text(
+            "Use like this:\n/request Interstellar"
+        )
         return
 
-    movie_name = ' '.join(context.args)
-    results = search_movie(movie_name)
+    query = " ".join(context.args)
+
+    results = search_media(query)
 
     if not results:
-        await update.message.reply_text(f"No results found for '{movie_name}'")
+        await update.message.reply_text("No results found.")
         return
 
     context.user_data["last_search"] = results
 
     keyboard = [
-        [InlineKeyboardButton(f"{m['title']} ({m['year']})", callback_data=str(m['id']))]
-        for m in results[:5]
+        [
+            InlineKeyboardButton(
+                f"{'🎬' if m['type']=='movie' else '📺'} {m['title']} ({m['year']})",
+                callback_data=str(m["id"])
+            )
+        ]
+        for m in results[:8]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Select the correct movie:", reply_markup=reply_markup)
 
-# ---------- Callback for movie selection ----------
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "Select what you meant:",
+        reply_markup=reply_markup
+    )
+
+
+# ---------- Selection ----------
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     query = update.callback_query
     await query.answer()
-    movie_id = query.data
-    movie_title = None
-    movie_year = None
-    poster_path = None
 
-    # Find movie in last search
+    media_id = query.data
+
+    media = None
+
     for m in context.user_data.get("last_search", []):
-        if str(m["id"]) == movie_id:
-            movie_title = m["title"]
-            movie_year = m["year"]
-            poster_path = m.get("poster_path")
+        if str(m["id"]) == media_id:
+            media = m
             break
 
-    if movie_title:
-        # Save request
-        add_request(query.from_user.id, {"id": movie_id, "title": movie_title, "year": movie_year})
+    if not media:
+        await query.edit_message_text("Item not found.")
+        return
 
-        # Send poster if available
-        if poster_path:
-            poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}"
-            await query.message.reply_photo(
-                photo=poster_url,
-                caption=f"You selected: {movie_title} ({movie_year})\nSaved to your requests!"
-            )
-        else:
-            await query.edit_message_text(f"You selected: {movie_title} ({movie_year})\nSaved to your requests!")
+    add_request(
+        query.from_user.id,
+        {
+            "id": media["id"],
+            "title": media["title"],
+            "year": media["year"],
+            "type": media["type"],
+        },
+    )
+
+    poster = None
+    if media.get("poster_path"):
+        poster = f"https://image.tmdb.org/t/p/w500{media['poster_path']}"
+
+    icon = "🎬" if media["type"] == "movie" else "📺"
+
+    text = f"{icon} Request saved:\n{media['title']} ({media['year']})"
+
+    if poster:
+        await query.message.reply_photo(
+            photo=poster,
+            caption=text
+        )
     else:
-        await query.edit_message_text("Error: movie not found in your search results.")
+        await query.message.reply_text(text)
 
-# ---------- User Commands ----------
+    await query.edit_message_text(
+        f"Selected: {media['title']} ({media['year']})"
+    )
+
+
+# ---------- My requests ----------
 async def my_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     user_id = update.effective_user.id
-    movies = get_user_requests(user_id)
-    if not movies:
+
+    media = get_user_requests(user_id)
+
+    if not media:
         await update.message.reply_text("You have no requests.")
         return
-    text = "Your requests:\n" + "\n".join([f" - {m['title']} ({m['year']})" for m in movies])
+
+    text = "Your requests:\n\n"
+
+    for m in media:
+
+        icon = "🎬" if m.get("type") == "movie" else "📺"
+
+        text += f"{icon} {m['title']} ({m['year']})\n"
+
     await update.message.reply_text(text)
 
-# ---------- Admin Commands ----------
-async def all_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("You are not authorized to use this command.")
+
+# ---------- Delete request ----------
+async def delete_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = update.effective_user.id
+
+    media = get_user_requests(user_id)
+
+    if not media:
+        await update.message.reply_text("You have no requests.")
         return
 
-    requests = get_all_requests()
-    if not requests:
-        await update.message.reply_text("No requests found.")
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"{m['title']} ({m['year']})",
+                callback_data=f"del:{m['id']}"
+            )
+        ]
+        for m in media
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "Select request to delete:",
+        reply_markup=reply_markup
+    )
+
+
+async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    media_id = query.data.split(":")[1]
+
+    success = delete_user_request(query.from_user.id, media_id)
+
+    if success:
+        await query.edit_message_text("Request deleted.")
+    else:
+        await query.edit_message_text("Could not delete request.")
+
+
+# ---------- Admin ----------
+async def all_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("Not allowed.")
+        return
+
+    data = get_all_requests()
+
+    if not data:
+        await update.message.reply_text("No requests.")
         return
 
     text = ""
-    for user_id, movies in requests.items():
-        text += f"User {user_id}:\n"
-        for m in movies:
-            text += f" - {m['title']} ({m['year']})\n"
+
+    for user_id, media in data.items():
+
+        text += f"User {user_id}\n"
+
+        for m in media:
+
+            icon = "🎬" if m.get("type") == "movie" else "📺"
+
+            text += f" {icon} {m['title']} ({m['year']})\n"
+
+        text += "\n"
+
     await update.message.reply_text(text)
 
+
 async def clear_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("You are not authorized to use this command.")
+        await update.message.reply_text("Not allowed.")
         return
+
     clear_all_requests()
-    await update.message.reply_text("All requests have been cleared.")
 
-# ---------- Help Command ----------
+    await update.message.reply_text("All requests cleared.")
+
+
+# ---------- Help ----------
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = """
-Available Commands:
-/request <movie name> - Search and request a new movie
-/my_requests - Show your requests
 
-Admin Commands:
-/all_requests - Show all requests from all users
-/clear_requests - Clear all requests
+    text = """
+User commands
+
+/request <name> - search movie or series
+/my_requests - show your requests
+/delete_request - delete request
+
+Admin
+
+/all_requests
+/clear_requests
 """
-    await update.message.reply_text(help_text)
+
+    await update.message.reply_text(text)
+
 
 # ---------- Main ----------
 def main():
+
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # User commands
-    app.add_handler(CommandHandler("request", request_movie))
+    app.add_handler(CommandHandler("request", request_media))
     app.add_handler(CommandHandler("my_requests", my_requests))
+    app.add_handler(CommandHandler("delete_request", delete_request))
     app.add_handler(CommandHandler("help", help_command))
 
-    # Admin commands
     app.add_handler(CommandHandler("all_requests", all_requests))
     app.add_handler(CommandHandler("clear_requests", clear_requests))
 
-    # Callback buttons
+    app.add_handler(CallbackQueryHandler(delete_callback, pattern="^del:"))
     app.add_handler(CallbackQueryHandler(button_callback))
 
-    # Run the bot
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
