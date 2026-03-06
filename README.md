@@ -1,55 +1,63 @@
-# Telegram Media Manger Bot 🎬
+# Telegram Media Manager Bot 🎬
 
-A smart Telegram bot that allows users to search and request movies directly from the chat. The bot interfaces with the TMDb API to provide accurate results, manages a request list, and includes a built-in authorization system for administrators.
+A smart Telegram bot that allows users to search and request movies directly from chat. The bot uses the TMDb API to provide accurate search results, manages personal request lists, and includes administrator commands to manage the system.
 
 ## Key Features ✨
-* **Smart Search:** Find movies by title using the TMDb API.
-* **User-Friendly Interface:** Displays search results using interactive buttons (Inline Keyboard) to prevent errors.
-* **Personal Request Management:** Each user can only view the status of their own requests.
-* **Admin Panel:** Dedicated commands for the administrator to view all requests and manage the system.
-* **Status Tracking:** Supports various request states (`pending`, `approved`, `done`).
+* **Smart Movie Search:** Search movies by title using the TMDb API.  
+* **Inline Keyboard Interface:** Users select movies from interactive buttons to prevent mistakes.  
+* **Personal Request Tracking:** Each user can view only their own requests.  
+* **Admin Commands:** Administrators can view all requests, clear requests, and manage the system.  
+* **Poster Support:** Sends movie posters when available for better visual feedback.  
 
 ## Prerequisites 📋
-* Python 3.8 or higher
-* Telegram Bot Token from BotFather
-* TMDb API Key
+* Python 3.8 or higher  
+* Telegram Bot Token from BotFather  
+* TMDb API Key  
 
-## Installation and Setup 🚀
+## Installation & Setup 🚀
 
 1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/TamirRothschild/telegram-movie-request-bot.git](https://github.com/TamirRothschild/telegram-movie-request-bot.git)
-   cd telegram-movie-request-bot
-   ```
+```bash
+git clone https://github.com/TamirRothschild/telegram-movie-request-bot.git
+cd telegram-movie-request-bot
+```
 
-2. **Install required libraries:**
-   ```bash
-   pip install python-telegram-bot requests
-   ```
+2. **Install required Python libraries:**
+```python 
+pip install python-telegram-bot requests python-dotenv
+```
 
-3. **Configuration:**
-   * Open the main code file.
-   * Update the `API_KEY` (for TMDb) and the Telegram Bot Token variables.
-   * Set `ADMIN_ID` to the numerical Telegram ID of the bot administrator.
-   * Ensure a valid `requests.json` file exists with an initial empty array: `[]`.
+3.	**Configure environment variables:**
+Create a .env file in the project root with the following:
+```env
+TELEGRAM_TOKEN=your_bot_token_here
+ADMIN_IDS=123456789   # comma-separated list if multiple admins
+TMDB_API_KEY=your_tmdb_api_key_here
+```
 
-4. **Run the bot from the terminal:**
-   ```bash
-   python bot.py
-   ```
-   *(For production environments, it is highly recommended to configure the bot as a `systemd` service so it runs continuously in the background).*
+4.	**Optional: Create an empty JSON storage file for requests:**
+```bash
+mkdir -p data
+echo "{}" > data/requests.json
+```
+5.	**Run the bot:**
+```bash
+python bot.py
+```
+##### For production, consider running the bot as a systemd service to keep it running in the background.
 
 ## Available Commands 💬
 
 ### Standard User Commands:
-* `/request <movie name>` - Start the process of searching and requesting a new movie.
-* `/my_requests` - View the user's personal list of requests and their statuses.
+   * /request <movie name> - Search and request a new movie.
+   *	/my_requests - View your own requests and their statuses.
 
 ### Admin Commands:
-* `/list_all` - Display all open and closed requests in the system from all users.
+   *	/all_requests - View all requests from all users.
+   *	/clear_requests - Clear all stored requests.
 
-## Roadmap & Future Improvements 🗺️
-* Migrate the database from JSON to SQLite to better handle a large number of users.
-* Integrate with Plex API (or Radarr) to automatically fetch approved content.
-* Incorporate a built-in Logging module to document activity and errors.
-* Add a "Cancel Request" button for users.
+### Future Improvements 🗺️
+   *	Migrate storage from JSON to SQLite for better performance with many users.
+   *	Integrate with Plex or Radarr to automatically fetch approved movies.
+   * 	Add logging for activity and errors.
+   *	Add user “Cancel Request” functionality.
