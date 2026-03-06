@@ -1,0 +1,11 @@
+# .gitignore
+
+# Ignore environment file
+.env
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore data storage if sensitive
+data/requests.json
