@@ -1,22 +1,12 @@
-import os
-from dotenv import load_dotenv
-from tmdbv3api import TMDb, Search
-
-
-load_dotenv()
-
-tmdb = TMDb()
-tmdb.api_key = os.getenv("TMDB_API_KEY")
-
-search = Search()
-
 def search_media(query):
-
+    """
+    Search TMDb for movies and TV shows matching the query.
+    Returns a list of dicts: {id, title, year, poster_path, type}
+    """
     results = []
 
     # movies
-    movies = search.movies(query)
-
+    movies = list(search.movies(query))  # המרה ל-list
     for r in movies[:5]:
         results.append({
             "id": r.id,
@@ -27,8 +17,7 @@ def search_media(query):
         })
 
     # tv shows
-    tv = search.tv_shows(query)
-
+    tv = list(search.tv_shows(query))  # המרה ל-list
     for r in tv[:5]:
         results.append({
             "id": r.id,
