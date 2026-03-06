@@ -210,7 +210,7 @@ async def all_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- Clear Requests with double confirmation ----------
 
-# /clear_requests
+# ---------- Clear Requests with double confirmation ----------
 async def clear_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("Not allowed.")
@@ -218,15 +218,14 @@ async def clear_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["clear_step"] = 1
     keyboard = [
-        [InlineKeyboardButton("Yes ✅", callback_data="clear_step1_yes")],
-        [InlineKeyboardButton("No ❌", callback_data="clear_step1_no")]
+        [InlineKeyboardButton("Yes ✅", callback_data="clear1")],
+        [InlineKeyboardButton("No ❌", callback_data="cancel")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "Are you sure you want to clear all requests?", reply_markup=reply_markup
+        "Are you sure you want to clear all requests?", 
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# CallbackQueryHandler
 async def clear_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -235,30 +234,32 @@ async def clear_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Not allowed.")
         return
 
+    data = query.data
     step = context.user_data.get("clear_step", 0)
 
-    if step == 1:
-        if query.data == "clear_step1_yes":
-            context.user_data["clear_step"] = 2
-            keyboard = [
-                [InlineKeyboardButton("Yes ✅", callback_data="clear_step2_yes")],
-                [InlineKeyboardButton("No ❌", callback_data="clear_step2_no")]
-            ]
-            await query.edit_message_text(
-                "Are you REALLY sure you want to clear all requests?",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        else:  # clear_step1_no
-            await query.edit_message_text("Clearing canceled ❌")
-            context.user_data.pop("clear_step", None)
+    # ביטול
+    if data == "cancel":
+        await query.edit_message_text("Clearing canceled ❌")
+        context.user_data.pop("clear_step", None)
         return
 
-    if step == 2:
-        if query.data == "clear_step2_yes":
-            clear_all_requests()
-            await query.edit_message_text("All requests cleared ✅")
-        else:
-            await query.edit_message_text("Clearing canceled ❌")
+    # שלב ראשון
+    if step == 1 and data == "clear1":
+        context.user_data["clear_step"] = 2
+        keyboard = [
+            [InlineKeyboardButton("Yes, really ✅", callback_data="clear2")],
+            [InlineKeyboardButton("No ❌", callback_data="cancel")]
+        ]
+        await query.edit_message_text(
+            "Are you REALLY sure you want to clear all requests?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    # שלב שני
+    if step == 2 and data == "clear2":
+        clear_all_requests()
+        await query.edit_message_text("All requests cleared ✅")
         context.user_data.pop("clear_step", None)
         return
 
