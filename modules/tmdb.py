@@ -1,6 +1,9 @@
 import os
 from tmdbv3api import TMDb, Search
 
+
+load_dotenv()
+
 tmdb = TMDb()
 tmdb.api_key = os.getenv("TMDB_API_KEY")
 
