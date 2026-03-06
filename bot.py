@@ -211,7 +211,56 @@ async def all_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- Clear Requests ----------
 # ---------- Clear Requests with double confirmation ----------
 
+# ---------- Clear Requests with double confirmation ----------
+
+# CommandHandler
 async def clear_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("Not allowed.")
+        return
+
+    # שלב ראשון
+    context.user_data["clear_step"] = 1
+    keyboard = [
+        [InlineKeyboardButton("Yes ✅", callback_data="clear_step1_yes")],
+        [InlineKeyboardButton("No ❌", callback_data="clear_step1_no")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "Are you sure you want to clear all requests?", reply_markup=reply_markup
+    )
+
+
+# CallbackQueryHandler
+async def clear_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    step = context.user_data.get("clear_step", 0)
+
+    if step == 1:
+        if query.data == "clear_step1_yes":
+            # שלב שני
+            context.user_data["clear_step"] = 2
+            keyboard = [
+                [InlineKeyboardButton("Yes ✅", callback_data="clear_step2_yes")],
+                [InlineKeyboardButton("No ❌", callback_data="clear_step2_no")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                "Are you REALLY sure you want to clear all requests?", reply_markup=reply_markup
+            )
+        else:
+            await query.edit_message_text("Clearing canceled ❌")
+            context.user_data.pop("clear_step", None)
+
+    elif step == 2:
+        if query.data == "clear_step2_yes":
+            clear_all_requests()
+            await query.edit_message_text("All requests cleared ✅")
+        else:
+            await query.edit_message_text("Clearing canceled ❌")
+        context.user_data.pop("clear_step", None)
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("Not allowed.")
         return
@@ -350,6 +399,7 @@ def main():
 
     # Admin commands
     app.add_handler(CommandHandler("all_requests", all_requests))
+
     app.add_handler(CommandHandler("clear_requests", clear_requests))
     app.add_handler(CallbackQueryHandler(clear_callback, pattern="^clear_step"))
 
