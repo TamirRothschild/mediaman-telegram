@@ -4,6 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
 from modules.tmdb import search_movie
 from modules.storage import add_request, get_all_requests, clear_all_requests, get_user_requests
+from telegram.ext import ApplicationBuilder
 
 # Load environment variables
 load_dotenv()
@@ -110,24 +111,23 @@ def my_requests(update: Update, context: CallbackContext):
     update.message.reply_text(text)
 
 # --------- Main function ----------
+
 def main():
-    updater = Updater(TOKEN)
-    dp = updater.dispatcher
+    app = ApplicationBuilder().token(TOKEN).build()
 
     # User commands
-    dp.add_handler(CommandHandler("request", request_movie))
-    dp.add_handler(CommandHandler("my_requests", my_requests))
+    app.add_handler(CommandHandler("request", request_movie))
+    app.add_handler(CommandHandler("my_requests", my_requests))
 
     # Admin commands
-    dp.add_handler(CommandHandler("all_requests", all_requests))
-    dp.add_handler(CommandHandler("clear_requests", clear_requests))
+    app.add_handler(CommandHandler("all_requests", all_requests))
+    app.add_handler(CommandHandler("clear_requests", clear_requests))
 
     # Callback handler for inline buttons
-    dp.add_handler(CallbackQueryHandler(button_callback))
+    app.add_handler(CallbackQueryHandler(button_callback))
 
     # Start bot
-    updater.start_polling()
-    updater.idle()
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
