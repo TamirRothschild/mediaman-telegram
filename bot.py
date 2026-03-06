@@ -1,54 +1,51 @@
 import os
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 from modules.tmdb import search_movie
 from modules.storage import add_request, get_all_requests, clear_all_requests, get_user_requests
-from telegram.ext import ApplicationBuilder
 
 # Load environment variables
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x]
 
-# --------- Admin helper ----------
-def is_admin(user_id):
+# ---------- Admin Helper ----------
+def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
-# --------- /request command ----------
-def request_movie(update: Update, context: CallbackContext):
+# ---------- /request command ----------
+async def request_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        update.message.reply_text("Please provide a movie name after the /request command")
+        await update.message.reply_text("Please provide a movie name after the /request command")
         return
 
     movie_name = ' '.join(context.args)
-    results = search_movie(movie_name)  # <-- call module function
+    results = search_movie(movie_name)
 
     if not results:
-        update.message.reply_text(f"No results found for '{movie_name}'")
+        await update.message.reply_text(f"No results found for '{movie_name}'")
         return
 
-    # Save last search in user_data for callback
     context.user_data["last_search"] = results
 
-    # Build InlineKeyboard for top 5 results
     keyboard = [
-        [InlineKeyboardButton(f"{m['title']} ({m['year']})", callback_data=str(m['id']))] 
+        [InlineKeyboardButton(f"{m['title']} ({m['year']})", callback_data=str(m['id']))]
         for m in results[:5]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("Select the correct movie:", reply_markup=reply_markup)
+    await update.message.reply_text("Select the correct movie:", reply_markup=reply_markup)
 
-# --------- Callback for movie selection ----------
-def button_callback(update: Update, context: CallbackContext):
+# ---------- Callback for movie selection ----------
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    query.answer()
+    await query.answer()
     movie_id = query.data
     movie_title = None
     movie_year = None
     poster_path = None
 
-    # Find selected movie in last search
+    # Find movie in last search
     for m in context.user_data.get("last_search", []):
         if str(m["id"]) == movie_id:
             movie_title = m["title"]
@@ -60,27 +57,37 @@ def button_callback(update: Update, context: CallbackContext):
         # Save request
         add_request(query.from_user.id, {"id": movie_id, "title": movie_title, "year": movie_year})
 
-        # Send poster with caption if available
+        # Send poster if available
         if poster_path:
             poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}"
-            query.message.reply_photo(
+            await query.message.reply_photo(
                 photo=poster_url,
                 caption=f"You selected: {movie_title} ({movie_year})\nSaved to your requests!"
             )
         else:
-            query.message.reply_text(f"You selected: {movie_title} ({movie_year})\nSaved to your requests!")
+            await query.edit_message_text(f"You selected: {movie_title} ({movie_year})\nSaved to your requests!")
     else:
-        query.edit_message_text("Error: movie not found in your search results.")
+        await query.edit_message_text("Error: movie not found in your search results.")
 
-# --------- Admin Commands ----------
-def all_requests(update: Update, context: CallbackContext):
+# ---------- User Commands ----------
+async def my_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    movies = get_user_requests(user_id)
+    if not movies:
+        await update.message.reply_text("You have no requests.")
+        return
+    text = "Your requests:\n" + "\n".join([f" - {m['title']} ({m['year']})" for m in movies])
+    await update.message.reply_text(text)
+
+# ---------- Admin Commands ----------
+async def all_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
-        update.message.reply_text("You are not authorized to use this command.")
+        await update.message.reply_text("You are not authorized to use this command.")
         return
 
     requests = get_all_requests()
     if not requests:
-        update.message.reply_text("No requests found.")
+        await update.message.reply_text("No requests found.")
         return
 
     text = ""
@@ -88,45 +95,45 @@ def all_requests(update: Update, context: CallbackContext):
         text += f"User {user_id}:\n"
         for m in movies:
             text += f" - {m['title']} ({m['year']})\n"
-    update.message.reply_text(text or "No requests found.")
+    await update.message.reply_text(text)
 
-def clear_requests(update: Update, context: CallbackContext):
+async def clear_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
-        update.message.reply_text("You are not authorized to use this command.")
+        await update.message.reply_text("You are not authorized to use this command.")
         return
-
     clear_all_requests()
-    update.message.reply_text("All requests have been cleared.")
+    await update.message.reply_text("All requests have been cleared.")
 
-def my_requests(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
-    movies = get_user_requests(user_id)
-    if not movies:
-        update.message.reply_text("You have no requests.")
-        return
+# ---------- Help Command ----------
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = """
+Available Commands:
+/request <movie name> - Search and request a new movie
+/my_requests - Show your requests
 
-    text = "Your requests:\n"
-    for m in movies:
-        text += f" - {m['title']} ({m['year']})\n"
-    update.message.reply_text(text)
+Admin Commands:
+/all_requests - Show all requests from all users
+/clear_requests - Clear all requests
+"""
+    await update.message.reply_text(help_text)
 
-# --------- Main function ----------
-
+# ---------- Main ----------
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     # User commands
     app.add_handler(CommandHandler("request", request_movie))
     app.add_handler(CommandHandler("my_requests", my_requests))
+    app.add_handler(CommandHandler("help", help_command))
 
     # Admin commands
     app.add_handler(CommandHandler("all_requests", all_requests))
     app.add_handler(CommandHandler("clear_requests", clear_requests))
 
-    # Callback handler for inline buttons
+    # Callback buttons
     app.add_handler(CallbackQueryHandler(button_callback))
 
-    # Start bot
+    # Run the bot
     app.run_polling()
 
 if __name__ == "__main__":
