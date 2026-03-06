@@ -1,3 +1,15 @@
+import os
+from tmdbv3api import TMDb, Search
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# אתחול TMDb
+tmdb = TMDb()
+tmdb.api_key = os.getenv("TMDB_API_KEY")
+
+search = Search()
+
 def search_media(query):
     """
     Search TMDb for movies and TV shows matching the query.
