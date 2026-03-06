@@ -184,27 +184,23 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- Admin ----------
 async def all_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("Not allowed.")
         return
 
     data = get_all_requests()
-
     if not data:
         await update.message.reply_text("No requests.")
         return
 
     text = ""
-
     for user_id, media in data.items():
-
-        text += f"User {user_id}\n"
+        # אם יש username בבקשות, קח את הראשון
+        username = media[0].get("username") if media and "username" in media[0] else f"User {user_id}"
+        text += f"{username}\n"
 
         for m in media:
-
             icon = "🎬" if m.get("type") == "movie" else "📺"
-
             text += f" {icon} {m['title']} ({m['year']})\n"
 
         text += "\n"
