@@ -307,7 +307,7 @@ def main():
 
     # Admin commands
     app.add_handler(CommandHandler("all_requests", all_requests))
-  app.add_handler(CallbackQueryHandler(clear_callback, pattern="^clear_step"))
+    app.add_handler(CallbackQueryHandler(clear_callback, pattern="^clear_step"))
 
     # Callback handlers
     app.add_handler(CallbackQueryHandler(delete_callback, pattern="^del:"))
