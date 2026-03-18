@@ -320,7 +320,6 @@ def main():
 
     app.run_polling(
         timeout=30,
-        pool_timeout=30,
     )
 
 
