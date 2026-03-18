@@ -1,6 +1,8 @@
 import os
 from dotenv import load_dotenv
+import asyncio
 
+from telegram.request import HTTPXRequest
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -104,10 +106,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"{icon} Request saved:\n{media['title']} ({media['year']})"
 
     if poster:
-        await query.message.reply_photo(
-            photo=poster,
-            caption=text
-        )
+        for attempt in range(3):
+            try:
+                await query.message.reply_photo(photo=poster, caption=text)
+                break
+            except Exception:
+                if attempt == 2:
+                    await query.message.reply_text(text)  # fallback without image
+                await asyncio.sleep(2)
     else:
         await query.message.reply_text(text)
 
@@ -195,7 +201,6 @@ async def all_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = ""
     for user_id, media in data.items():
-        # אם יש username בבקשות, קח את הראשון
         username = media[0].get("username") if media and "username" in media[0] else f"User {user_id}"
         text += f"{username}\n"
 
@@ -208,9 +213,6 @@ async def all_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
-# ---------- Clear Requests with double confirmation ----------
-
-# ---------- Clear Requests with double confirmation ----------
 # ---------- Clear Requests ----------
 async def clear_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
@@ -257,19 +259,6 @@ async def clear_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         clear_all_requests()
         await query.edit_message_text("All requests cleared ✅")
         return
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("Not allowed.")
-        return
-
-    context.user_data["clear_step"] = 1
-    keyboard = [
-        [InlineKeyboardButton("Yes ✅", callback_data="clear1")],
-        [InlineKeyboardButton("No ❌", callback_data="cancel")]
-    ]
-    await update.message.reply_text(
-        "Are you sure you want to clear all requests?", 
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
 
 
 # ---------- Help ----------
@@ -290,6 +279,7 @@ Admin
 
     await update.message.reply_text(text)
 
+
 # ---------- /start ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
@@ -300,12 +290,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(text)
 
+
 # ---------- Main ----------
 def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+    request = HTTPXRequest(
+        connection_pool_size=8,
+        read_timeout=30,
+        write_timeout=30,
+        connect_timeout=15,
+        pool_timeout=15,
+    )
+    app = ApplicationBuilder().token(TOKEN).request(request).build()
 
     # User commands
-    app.add_handler(CommandHandler("start", start)) 
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("request", request_media))
     app.add_handler(CommandHandler("my_requests", my_requests))
     app.add_handler(CommandHandler("delete_request", delete_request))
@@ -313,16 +311,17 @@ def main():
 
     # Admin commands
     app.add_handler(CommandHandler("all_requests", all_requests))
-
     app.add_handler(CommandHandler("clear_requests", clear_requests))
     app.add_handler(CallbackQueryHandler(clear_callback, pattern="^clear:"))
-
 
     # Callback handlers
     app.add_handler(CallbackQueryHandler(delete_callback, pattern="^del:"))
     app.add_handler(CallbackQueryHandler(button_callback))
 
-    app.run_polling()
+    app.run_polling(
+        timeout=30,
+        pool_timeout=30,
+    )
 
 
 if __name__ == "__main__":
