@@ -84,11 +84,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     details = get_movie_details(media["id"], media["type"])
     icon = "🎬" if media["type"] == "movie" else "📺"
     text = (
-        f"{icon} *{media['title']}* ({media['year']})
-"
-        f"⭐ {details['rating']} | ⏱ {details['runtime']}
-
-"
+        f"{icon} *{media['title']}* ({media['year']})\n"
+        f"⭐ {details['rating']} | ⏱ {details['runtime']}\n\n"
         f"✅ Request saved!"
     )
 
