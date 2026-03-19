@@ -88,3 +88,19 @@ def search_plex(title: str, media_type: str = "movie", year: str = None, imdb_id
 
 def is_available_on_plex(title: str, media_type: str = "movie") -> bool:
     return search_plex(title, media_type) is not None
+
+
+def get_stream_url(title: str, media_type: str = "movie") -> str | None:
+    """Return a direct stream URL for the title."""
+    root = _get_xml("search", {"query": title})
+    if root is None:
+        return None
+
+    for item in root.iter():
+        plex_type = item.get("type", "")
+        if not _match_type(plex_type, media_type):
+            continue
+        key = item.get("key", "")
+        if key:
+            return f"{PLEX_URL}/web/index.html#!/server/{item.get('machineIdentifier', '')}/details?key={key}&X-Plex-Token={PLEX_TOKEN}"
+    return None

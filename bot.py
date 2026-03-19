@@ -9,7 +9,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 from modules.tmdb import search_media, get_movie_details, get_trending
-from modules.plex import search_plex
+from modules.plex import search_plex, get_stream_url
 from modules.yts import search_yts
 from modules.storage import add_request, get_all_requests, clear_all_requests, get_user_requests, delete_user_request, delete_requests_by_title, get_requesters_by_title, log_download, get_stats, get_activity, log
 
@@ -98,15 +98,32 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         # Always use TMDb poster for better quality
         thumb = poster
+        # Build stream button
+        stream_url = get_stream_url(media["title"], media["type"])
+        keyboard = None
+        if stream_url:
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("▶️ Watch on Plex", url=stream_url)
+            ]])
+
         sent = False
         if thumb:
             try:
-                await query.message.reply_photo(photo=thumb, caption=text, parse_mode="Markdown")
+                await query.message.reply_photo(
+                    photo=thumb,
+                    caption=text,
+                    parse_mode="Markdown",
+                    reply_markup=keyboard
+                )
                 sent = True
             except Exception:
                 pass
         if not sent:
-            await query.message.reply_text(text, parse_mode="Markdown")
+            await query.message.reply_text(
+                text,
+                parse_mode="Markdown",
+                reply_markup=keyboard
+            )
         # Delete any existing request for this title
         delete_requests_by_title(media["title"])
         log(f"PLEX HIT | user={username} | {plex_title} ({plex.get('year') or media['year']})")
