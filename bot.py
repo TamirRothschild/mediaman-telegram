@@ -455,7 +455,9 @@ Admin
 /download <n>          - search & download directly from YTS
 /clear_requests        - clear all requests
 /requests_stats        - stats & top requesters
-/activity              - recent activity log""")
+/activity              - recent activity log
+/restart               - restart bot
+/restart server        - reboot server""")
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -486,6 +488,30 @@ async def debug_plex(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("❌ Not found on Plex.")
 
+
+async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("Not allowed.")
+        return
+
+    args = context.args
+    target = args[0].lower() if args else "bot"
+
+    if target == "server":
+        await update.message.reply_text("🔄 Rebooting server...")
+        subprocess.Popen(["sudo", "reboot"])
+
+    elif target == "bot":
+        await update.message.reply_text("🔄 Restarting bot service...")
+        subprocess.Popen(["sudo", "systemctl", "restart", "mediaman.service"])
+
+    else:
+        await update.message.reply_text(
+            "Usage:\n"
+            "/restart — restart bot\n"
+            "/restart server — reboot server"
+        )
+
 def main():
     request = HTTPXRequest(connection_pool_size=8, read_timeout=30, write_timeout=30, connect_timeout=15, http_version="1.1")
     app = ApplicationBuilder().token(TOKEN).request(request).build()
@@ -503,6 +529,7 @@ def main():
     app.add_handler(CommandHandler("requests_stats",      requests_stats))
     app.add_handler(CommandHandler("activity",            activity_log))
     app.add_handler(CommandHandler("debugplex",           debug_plex))
+    app.add_handler(CommandHandler("restart",             restart_bot))
 
     app.add_handler(CallbackQueryHandler(clear_callback,             pattern="^clear:"))
     app.add_handler(CallbackQueryHandler(delete_callback,            pattern="^del:"))
