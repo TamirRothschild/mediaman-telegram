@@ -11,4 +11,3 @@ __pycache__/
 data/requests.json
 
 venv/
-modules/yts.py
