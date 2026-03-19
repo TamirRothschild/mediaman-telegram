@@ -13,8 +13,9 @@ os.makedirs(DATA_DIR, exist_ok=True)
 activity_logger = logging.getLogger("activity")
 activity_logger.setLevel(logging.INFO)
 if not activity_logger.handlers:
-    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    fh = logging.FileHandler(LOG_FILE, encoding="utf-8", delay=False)
     fh.setFormatter(logging.Formatter("%(asctime)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+    fh.stream = open(LOG_FILE, "a", encoding="utf-8", buffering=1)
     activity_logger.addHandler(fh)
 
 

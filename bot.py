@@ -109,6 +109,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(text, parse_mode="Markdown")
         # Delete any existing request for this title
         delete_requests_by_title(media["title"])
+        log(f"PLEX HIT | user={username} | {plex_title} ({plex.get('year') or media['year']})")
         await query.edit_message_text(f"✅ Available on Plex: {plex_title}")
         return
 
