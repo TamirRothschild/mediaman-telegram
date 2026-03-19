@@ -104,3 +104,67 @@ def get_stream_url(title: str, media_type: str = "movie") -> str | None:
         if key:
             return f"{PLEX_URL}/web/index.html#!/server/{item.get('machineIdentifier', '')}/details?key={key}&X-Plex-Token={PLEX_TOKEN}"
     return None
+
+
+def get_episode_stream(show: str, season: int, episode: int) -> dict | None:
+    """
+    Find a specific episode in Plex and return stream info.
+    Returns dict {title, stream_url, file_size} or None.
+    """
+    # Find the show first
+    root = _get_xml("search", {"query": show})
+    if root is None:
+        return None
+
+    show_key = None
+    for item in root.iter():
+        if item.get("type") == "show":
+            show_key = item.get("ratingKey")
+            break
+
+    if not show_key:
+        return None
+
+    # Get seasons
+    seasons_root = _get_xml(f"library/metadata/{show_key}/children")
+    if seasons_root is None:
+        return None
+
+    season_key = None
+    for item in seasons_root.iter("Directory"):
+        if item.get("type") == "season" and item.get("index") == str(season):
+            season_key = item.get("ratingKey")
+            break
+
+    if not season_key:
+        return None
+
+    # Get episodes
+    episodes_root = _get_xml(f"library/metadata/{season_key}/children")
+    if episodes_root is None:
+        return None
+
+    for item in episodes_root.iter("Video"):
+        if item.get("type") == "episode" and item.get("index") == str(episode):
+            # Get file part
+            part = item.find(".//Part")
+            if part is None:
+                return None
+
+            file_key  = part.get("key", "")
+            file_size = int(part.get("size", 0))
+            duration  = int(item.get("duration", 0)) // 1000  # seconds
+            ep_title  = item.get("title", f"S{season:02d}E{episode:02d}")
+
+            return {
+                "title": ep_title,
+                "show": item.get("grandparentTitle", show),
+                "season": season,
+                "episode": episode,
+                "stream_url": f"{PLEX_URL}{file_key}?X-Plex-Token={PLEX_TOKEN}",
+                "file_size": file_size,
+                "duration": duration,
+                "thumb": _thumb_url(item.get("thumb", "")),
+            }
+
+    return None
