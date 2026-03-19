@@ -597,11 +597,21 @@ async def stream_episode_callback(update: Update, context: ContextTypes.DEFAULT_
         f"⏱ {ep['duration']}min"
     )
 
-    # Build buttons — Plex player + direct file
-    buttons = [InlineKeyboardButton("▶️ Plex Player", url=ep["stream_url"])]
+    # Buttons
+    buttons = [InlineKeyboardButton("🖥 Watch on Web", url=ep["stream_url"])]
     if ep.get("direct_url"):
         buttons.append(InlineKeyboardButton("📁 Direct File", url=ep["direct_url"]))
     keyboard = InlineKeyboardMarkup([buttons])
+
+    # plex:// deep link for mobile app — sent as plain text so iOS/Android handle it
+    machine_id = ep.get("machine_id", "")
+    plex_app_link = (
+        f"plex://preplay/?metadataKey=%2Flibrary%2Fmetadata%2F{ep['key']}"
+        f"&server={ep.get('machine_id', '')}"
+    ) if ep.get("machine_id") else None
+
+    if plex_app_link:
+        text += f"\n\n📱 *Open in Plex app:*\n`{plex_app_link}`"
 
     if ep.get("thumb"):
         try:

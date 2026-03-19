@@ -257,6 +257,7 @@ def get_season_episodes(season_key: str) -> list | None:
                 "direct_url": direct_url,
                 "show": item.get("grandparentTitle", ""),
                 "season": int(item.get("parentIndex", 0)),
+                "machine_id": machine_id,
             })
 
     return sorted(episodes, key=lambda x: x["episode_num"])
