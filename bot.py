@@ -8,7 +8,7 @@ from telegram.request import HTTPXRequest
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
-from modules.tmdb import search_media, get_trending
+from modules.tmdb import search_media, get_movie_details, get_trending
 from modules.yts import search_yts
 from modules.storage import add_request, get_all_requests, clear_all_requests, get_user_requests, delete_user_request, log
 
@@ -64,7 +64,10 @@ async def request_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("No results found.")
         return
     context.user_data["last_search"] = results
-    keyboard = [[InlineKeyboardButton(f"{'🎬' if m['type']=='movie' else '📺'} {m['title']} ({m['year']})", callback_data=str(m["id"]))] for m in results[:8]]
+    keyboard = [[InlineKeyboardButton(
+        f"{'🎬' if m['type']=='movie' else '📺'} {m['title']} ({m['year']}) ⭐{m['rating']}",
+        callback_data=str(m["id"])
+    )] for m in results[:8]]
     await update.message.reply_text("Select what you meant:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -76,19 +79,33 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     username = get_username(query.from_user)
     add_request(query.from_user.id, {"id": media["id"], "title": media["title"], "year": media["year"], "type": media["type"]}, username=username)
+
+    # Fetch runtime + rating
+    details = get_movie_details(media["id"], media["type"])
+    icon = "🎬" if media["type"] == "movie" else "📺"
+    text = (
+        f"{icon} *{media['title']}* ({media['year']})
+"
+        f"⭐ {details['rating']} | ⏱ {details['runtime']}
+
+"
+        f"✅ Request saved!"
+    )
+
     poster = f"https://image.tmdb.org/t/p/w500{media['poster_path']}" if media.get("poster_path") else None
-    icon   = "🎬" if media["type"] == "movie" else "📺"
-    text   = f"{icon} Request saved:\n{media['title']} ({media['year']})"
+
     if poster:
         for attempt in range(3):
             try:
-                await query.message.reply_photo(photo=poster, caption=text)
+                await query.message.reply_photo(photo=poster, caption=text, parse_mode="Markdown")
                 break
             except Exception:
-                if attempt == 2: await query.message.reply_text(text)
+                if attempt == 2:
+                    await query.message.reply_text(text, parse_mode="Markdown")
                 await asyncio.sleep(2)
     else:
-        await query.message.reply_text(text)
+        await query.message.reply_text(text, parse_mode="Markdown")
+
     await query.edit_message_text(f"Selected: {media['title']} ({media['year']})")
 
 # ─── /trending ────────────────────────────────────────────────────────────────
