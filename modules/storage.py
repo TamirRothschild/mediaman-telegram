@@ -173,12 +173,13 @@ def get_stats() -> dict:
 
 
 def get_activity(limit: int = 30) -> list:
-    """Return recent activity log entries from file."""
+    """Return recent activity log entries from file, newest first."""
     if not os.path.exists(LOG_FILE):
         return []
     with open(LOG_FILE, "r", encoding="utf-8") as f:
         lines = f.readlines()
     results = []
+    # Read last N lines, reversed so newest is first
     for line in reversed(lines[-limit:]):
         line = line.strip()
         if not line:
