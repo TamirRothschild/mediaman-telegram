@@ -1,14 +1,12 @@
 import os
-from tmdbv3api import TMDb, Search
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# אתחול TMDb
-tmdb = TMDb()
-tmdb.api_key = os.getenv("TMDB_API_KEY")
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+BASE_URL = "https://api.themoviedb.org/3"
 
-search = Search()
 
 def search_media(query):
     """
@@ -18,25 +16,41 @@ def search_media(query):
     results = []
 
     # movies
-    movies = list(search.movies(query))  # המרה ל-list
-    for r in movies[:5]:
-        results.append({
-            "id": r.id,
-            "title": r.title,
-            "year": r.release_date[:4] if r.release_date else "Unknown",
-            "poster_path": r.poster_path,
-            "type": "movie"
-        })
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/search/movie",
+            params={"api_key": TMDB_API_KEY, "query": query},
+            timeout=10,
+        )
+        movies = resp.json().get("results", [])
+        for r in movies[:5]:
+            results.append({
+                "id": r["id"],
+                "title": r["title"],
+                "year": r.get("release_date", "")[:4] or "Unknown",
+                "poster_path": r.get("poster_path"),
+                "type": "movie",
+            })
+    except Exception:
+        pass
 
     # tv shows
-    tv = list(search.tv_shows(query))  # המרה ל-list
-    for r in tv[:5]:
-        results.append({
-            "id": r.id,
-            "title": r.name,
-            "year": r.first_air_date[:4] if r.first_air_date else "Unknown",
-            "poster_path": r.poster_path,
-            "type": "tv"
-        })
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/search/tv",
+            params={"api_key": TMDB_API_KEY, "query": query},
+            timeout=10,
+        )
+        shows = resp.json().get("results", [])
+        for r in shows[:5]:
+            results.append({
+                "id": r["id"],
+                "title": r["name"],
+                "year": r.get("first_air_date", "")[:4] or "Unknown",
+                "poster_path": r.get("poster_path"),
+                "type": "tv",
+            })
+    except Exception:
+        pass
 
     return results
