@@ -87,24 +87,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     poster  = f"https://image.tmdb.org/t/p/w500{media['poster_path']}" if media.get("poster_path") else None
 
     if plex:
-        # Already on Plex — notify without saving request
+        # Already on Plex — show poster + notify, delete any existing request
+        plex_title = plex.get("title") or media["title"]
         text = (
             f"🎉 Good news!\n"
-            f"{icon} *{media['title']}* ({media['year']}) "
+            f"{icon} *{plex_title}* ({plex.get('year') or media['year']}) "
             f"is already available on Plex!\n\n"
             f"⭐ {details['rating']} | ⏱ {details['runtime']}\n"
             f"▶️ Open Plex and enjoy!"
         )
+        # Use Plex thumbnail first, fallback to TMDb poster
         thumb = plex.get("thumb") or poster
+        sent = False
         if thumb:
             try:
                 await query.message.reply_photo(photo=thumb, caption=text, parse_mode="Markdown")
-                await query.edit_message_text(f"✅ Available on Plex: {media['title']}")
-                return
+                sent = True
             except Exception:
                 pass
-        await query.message.reply_text(text, parse_mode="Markdown")
-        await query.edit_message_text(f"✅ Available on Plex: {media['title']}")
+        if not sent:
+            await query.message.reply_text(text, parse_mode="Markdown")
+        # Delete any existing request for this title
+        delete_requests_by_title(media["title"])
+        await query.edit_message_text(f"✅ Available on Plex: {plex_title}")
         return
 
     # Not on Plex — save request normally
