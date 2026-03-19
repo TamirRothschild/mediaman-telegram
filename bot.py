@@ -9,7 +9,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 from modules.tmdb import search_media, get_movie_details, get_trending
-from modules.plex import search_plex, get_stream_url, get_episode_stream
+from modules.plex import search_plex, get_stream_url, get_episode_stream, get_show_seasons, get_season_episodes
 from modules.yts import search_yts
 from modules.storage import add_request, get_all_requests, clear_all_requests, get_user_requests, delete_user_request, delete_requests_by_title, get_requesters_by_title, log_download, get_stats, get_activity, log
 
@@ -475,7 +475,7 @@ Admin
 /activity              - recent activity log
 /restart               - restart bot
 /restart server        - reboot server
-/stream <show> S01E01  - send episode from Plex""")
+/stream <show>         - browse & watch show episodes from Plex""")
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -509,47 +509,92 @@ async def debug_plex(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def stream_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Usage: /stream <show> S<season>E<episode>
-    Example: /stream Seinfeld S01E05
-    """
-    import re
-
-    if not context.args or len(context.args) < 2:
-        await update.message.reply_text(
-            "Usage: /stream <show> S<season>E<episode>\n"
-            "Example: /stream Seinfeld S01E05"
-        )
+    """Usage: /stream <show name>"""
+    if not context.args:
+        await update.message.reply_text("Usage: /stream <show>\nExample: /stream Seinfeld")
         return
 
-    se_arg = context.args[-1].upper()
-    match = re.match(r"S(\d+)E(\d+)", se_arg)
-    if not match:
-        await update.message.reply_text(
-            "Format must be S01E05\n"
-            "Example: /stream Seinfeld S01E05"
-        )
+    show = " ".join(context.args)
+    await update.message.reply_text(f"🔍 Looking for {show} on Plex...")
+
+    seasons = get_show_seasons(show)
+
+    if not seasons:
+        await update.message.reply_text(f"❌ Could not find *{show}* on Plex.", parse_mode="Markdown")
         return
 
-    season  = int(match.group(1))
-    episode = int(match.group(2))
-    show    = " ".join(context.args[:-1])
+    context.user_data["stream_seasons"] = {str(s["key"]): s for s in seasons}
 
+    # Build seasons keyboard — 3 per row
+    buttons = [
+        InlineKeyboardButton(
+            f"S{s['season_num']:02d} ({s['episode_count']} ep)",
+            callback_data=f"strs:{s['key']}"
+        )
+        for s in seasons
+    ]
+    keyboard = [buttons[i:i+3] for i in range(0, len(buttons), 3)]
+
+    show_title = seasons[0]["show_title"]
     await update.message.reply_text(
-        f"🔍 Looking for {show} S{season:02d}E{episode:02d} on Plex..."
+        f"📺 *{show_title}*\nSelect a season:",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    ep = get_episode_stream(show, season, episode)
 
-    if not ep:
-        await update.message.reply_text(
-            f"❌ Could not find {show} S{season:02d}E{episode:02d} on Plex."
+async def stream_season_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """User selected a season — show episodes."""
+    query = update.callback_query
+    await query.answer()
+
+    season_key = query.data.split(":")[1]
+    season_info = context.user_data.get("stream_seasons", {}).get(season_key, {})
+
+    episodes = get_season_episodes(season_key)
+    if not episodes:
+        await query.edit_message_text("❌ No episodes found.")
+        return
+
+    context.user_data["stream_episodes"] = {str(e["key"]): e for e in episodes}
+
+    # Build episodes keyboard — 4 per row
+    buttons = [
+        InlineKeyboardButton(
+            f"E{e['episode_num']:02d}",
+            callback_data=f"strep:{e['key']}"
         )
+        for e in episodes
+    ]
+    keyboard = [buttons[i:i+4] for i in range(0, len(buttons), 4)]
+    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="strback")])
+
+    show_title = episodes[0]["show"] if episodes else "Show"
+    season_num = season_info.get("season_num", "?")
+
+    await query.edit_message_text(
+        f"📺 *{show_title}* — Season {season_num}\nSelect an episode:",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def stream_episode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """User selected an episode — show Plex link."""
+    query = update.callback_query
+    await query.answer()
+
+    ep_key = query.data.split(":")[1]
+    ep = context.user_data.get("stream_episodes", {}).get(ep_key)
+
+    if not ep or not ep.get("stream_url"):
+        await query.edit_message_text("❌ Episode not found.")
         return
 
     text = (
-        f"📺 *{ep['show']}* — S{ep['season']:02d}E{ep['episode']:02d}\n"
-        f"*{ep['title']}*"
+        f"📺 *{ep['show']}* — S{ep['season']:02d}E{ep['episode_num']:02d}\n"
+        f"*{ep['title']}*\n"
+        f"⏱ {ep['duration']}min"
     )
 
     keyboard = InlineKeyboardMarkup([[
@@ -558,17 +603,18 @@ async def stream_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if ep.get("thumb"):
         try:
-            await update.message.reply_photo(
+            await query.message.reply_photo(
                 photo=ep["thumb"],
                 caption=text,
                 parse_mode="Markdown",
                 reply_markup=keyboard
             )
+            await query.edit_message_text(f"✅ {ep['show']} S{ep['season']:02d}E{ep['episode_num']:02d}")
             return
         except Exception:
             pass
 
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
@@ -651,6 +697,8 @@ def main():
     app.add_handler(CommandHandler("debugplex",           debug_plex))
     app.add_handler(CommandHandler("restart",             restart_bot))
     app.add_handler(CommandHandler("stream",              stream_episode))
+    app.add_handler(CallbackQueryHandler(stream_season_callback,  pattern="^strs:"))
+    app.add_handler(CallbackQueryHandler(stream_episode_callback, pattern="^strep:"))
     app.add_handler(CallbackQueryHandler(restart_callback, pattern="^rst"))
 
     app.add_handler(CallbackQueryHandler(clear_callback,             pattern="^clear:"))

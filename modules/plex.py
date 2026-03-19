@@ -168,3 +168,62 @@ def get_episode_stream(show: str, season: int, episode: int) -> dict | None:
             }
 
     return None
+
+
+def get_show_seasons(show: str) -> list | None:
+    """Return list of seasons for a show. Each: {key, season_num, title, episode_count}"""
+    root = _get_xml("search", {"query": show})
+    if root is None:
+        return None
+
+    show_key = None
+    show_title = show
+    for item in root.iter():
+        if item.get("type") == "show":
+            show_key = item.get("ratingKey")
+            show_title = item.get("title", show)
+            break
+
+    if not show_key:
+        return None
+
+    seasons_root = _get_xml(f"library/metadata/{show_key}/children")
+    if seasons_root is None:
+        return None
+
+    seasons = []
+    for item in seasons_root.iter("Directory"):
+        if item.get("type") == "season":
+            seasons.append({
+                "key": item.get("ratingKey"),
+                "season_num": int(item.get("index", 0)),
+                "title": item.get("title", f"Season {item.get('index')}"),
+                "episode_count": int(item.get("leafCount", 0)),
+                "show_title": show_title,
+            })
+
+    return sorted(seasons, key=lambda x: x["season_num"])
+
+
+def get_season_episodes(season_key: str) -> list | None:
+    """Return list of episodes for a season key."""
+    episodes_root = _get_xml(f"library/metadata/{season_key}/children")
+    if episodes_root is None:
+        return None
+
+    episodes = []
+    for item in episodes_root.iter("Video"):
+        if item.get("type") == "episode":
+            part = item.find(".//Part")
+            episodes.append({
+                "key": item.get("ratingKey"),
+                "episode_num": int(item.get("index", 0)),
+                "title": item.get("title", f"Episode {item.get('index')}"),
+                "duration": int(item.get("duration", 0)) // 60000,  # minutes
+                "thumb": _thumb_url(item.get("thumb", "")),
+                "stream_url": f"{PLEX_URL}{part.get('key')}?X-Plex-Token={PLEX_TOKEN}" if part is not None else None,
+                "show": item.get("grandparentTitle", ""),
+                "season": int(item.get("parentIndex", 0)),
+            })
+
+    return sorted(episodes, key=lambda x: x["episode_num"])
