@@ -9,8 +9,9 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 from modules.tmdb import search_media, get_movie_details, get_trending
+from modules.plex import search_plex
 from modules.yts import search_yts
-from modules.storage import add_request, get_all_requests, clear_all_requests, get_user_requests, delete_user_request, log
+from modules.storage import add_request, get_all_requests, clear_all_requests, get_user_requests, delete_user_request, delete_requests_by_title, get_requesters_by_title, log_download, get_stats, log
 
 load_dotenv()
 
@@ -78,18 +79,42 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Item not found.")
         return
     username = get_username(query.from_user)
+    # Check Plex first
+    plex = search_plex(media["title"], media["type"])
+
+    details = get_movie_details(media["id"], media["type"])
+    icon    = "🎬" if media["type"] == "movie" else "📺"
+    poster  = f"https://image.tmdb.org/t/p/w500{media['poster_path']}" if media.get("poster_path") else None
+
+    if plex:
+        # Already on Plex — notify without saving request
+        text = (
+            f"🎉 Good news!\n"
+            f"{icon} *{media['title']}* ({media['year']}) "
+            f"is already available on Plex!\n\n"
+            f"⭐ {details['rating']} | ⏱ {details['runtime']}\n"
+            f"▶️ Open Plex and enjoy!"
+        )
+        thumb = plex.get("thumb") or poster
+        if thumb:
+            try:
+                await query.message.reply_photo(photo=thumb, caption=text, parse_mode="Markdown")
+                await query.edit_message_text(f"✅ Available on Plex: {media['title']}")
+                return
+            except Exception:
+                pass
+        await query.message.reply_text(text, parse_mode="Markdown")
+        await query.edit_message_text(f"✅ Available on Plex: {media['title']}")
+        return
+
+    # Not on Plex — save request normally
     add_request(query.from_user.id, {"id": media["id"], "title": media["title"], "year": media["year"], "type": media["type"]}, username=username)
 
-    # Fetch runtime + rating
-    details = get_movie_details(media["id"], media["type"])
-    icon = "🎬" if media["type"] == "movie" else "📺"
     text = (
         f"{icon} *{media['title']}* ({media['year']})\n"
         f"⭐ {details['rating']} | ⏱ {details['runtime']}\n\n"
         f"✅ Request saved!"
     )
-
-    poster = f"https://image.tmdb.org/t/p/w500{media['poster_path']}" if media.get("poster_path") else None
 
     if poster:
         for attempt in range(3):
@@ -302,8 +327,26 @@ async def queue_quality_callback(update: Update, context: ContextTypes.DEFAULT_T
     torrent    = movie["torrents"][int(data)]
     ok, errmsg = await send_to_transmission(torrent["magnet"])
     if ok:
-        log(f"DOWNLOAD | {movie['title']} ({movie['year']}) | {torrent['quality']}")
-        await query.message.reply_text(f"✅ Added!\n🎬 {movie['title']} ({movie['year']})\n📦 {torrent['quality']} — {torrent['size']}")
+        log_download(movie["title"], movie["year"], torrent["quality"])
+        await query.message.reply_text(
+            f"✅ Added!\n🎬 {movie['title']} ({movie['year']})\n📦 {torrent['quality']} — {torrent['size']}"
+        )
+        # Notify all users who requested this movie
+        requesters = get_requesters_by_title(movie["title"])
+        for requester in requesters:
+            try:
+                await context.bot.send_message(
+                    chat_id=int(requester["user_id"]),
+                    text=(
+                        f"🎬 Good news! *{movie['title']}* ({movie['year']}) "
+                        f"has been added for download!\n📦 Quality: {torrent['quality']}"
+                    ),
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+        # Auto-delete requests for this title
+        delete_requests_by_title(movie["title"])
     else:
         await query.message.reply_text(f"❌ Failed: {errmsg}")
     try: await query.edit_message_reply_markup(reply_markup=None)
@@ -354,6 +397,26 @@ async def clear_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         clear_all_requests()
         await query.edit_message_text("All requests cleared ✅")
 
+
+async def requests_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("Not allowed.")
+        return
+    stats = get_stats()
+    text = "📊 *Stats*\n\n"
+    text += f"📋 Total open requests: *{stats['total_requests']}*\n"
+    text += f"⬇️ Total downloads: *{stats['total_downloads']}*\n\n"
+    if stats["top_users"]:
+        text += "👤 *Top requesters:*\n"
+        for i, u in enumerate(stats["top_users"], 1):
+            name = u.get("username") or f"User {u['user_id']}"
+            text += f"  {i}. {name} — {u['count']} requests\n"
+    if stats["recent_downloads"]:
+        text += "\n🎬 *Recent downloads:*\n"
+        for d in stats["recent_downloads"]:
+            text += f"  • {d['title']} ({d['year']}) {d['quality']}\n"
+    await update.message.reply_text(text, parse_mode="Markdown")
+
 # ─── /help ────────────────────────────────────────────────────────────────────
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -369,7 +432,8 @@ Admin
 /all_requests          - view all requests
 /download_requests     - select & download from requests list
 /download <n>          - search & download directly from YTS
-/clear_requests        - clear all requests""")
+/clear_requests        - clear all requests
+/requests_stats        - stats & top requesters""")
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -387,6 +451,7 @@ def main():
     app.add_handler(CommandHandler("clear_requests",     clear_requests))
     app.add_handler(CommandHandler("download",           download_media))
     app.add_handler(CommandHandler("download_requests",  download_requests))
+    app.add_handler(CommandHandler("requests_stats",      requests_stats))
 
     app.add_handler(CallbackQueryHandler(clear_callback,             pattern="^clear:"))
     app.add_handler(CallbackQueryHandler(delete_callback,            pattern="^del:"))
