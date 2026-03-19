@@ -1,5 +1,6 @@
 import os
 import requests
+import xml.etree.ElementTree as ET
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,11 +9,17 @@ PLEX_URL   = os.getenv("PLEX_URL", "http://192.168.1.166:32400")
 PLEX_TOKEN = os.getenv("PLEX_TOKEN", "")
 
 
-def _headers() -> dict:
-    return {
-        "X-Plex-Token": PLEX_TOKEN,
-        "Accept": "application/json",
-    }
+def _get(endpoint: str, params: dict = {}) -> ET.Element | None:
+    """GET request to Plex, returns parsed XML root or None."""
+    try:
+        resp = requests.get(
+            f"{PLEX_URL}/{endpoint}",
+            params={"X-Plex-Token": PLEX_TOKEN, **params},
+            timeout=5,
+        )
+        return ET.fromstring(resp.text)
+    except Exception:
+        return None
 
 
 def _thumb_url(thumb: str) -> str | None:
@@ -21,114 +28,63 @@ def _thumb_url(thumb: str) -> str | None:
     return f"{PLEX_URL}{thumb}?X-Plex-Token={PLEX_TOKEN}"
 
 
-def _parse_result(item: dict, media_type: str) -> dict | None:
-    """Validate and return a Plex result dict if type matches."""
-    plex_type = item.get("type", "")
-    if media_type == "movie" and plex_type != "movie":
-        return None
-    if media_type == "tv" and plex_type not in ("show", "series"):
-        return None
-    return {
-        "title": item.get("title", ""),
-        "year": str(item.get("year", "")),
-        "thumb": _thumb_url(item.get("thumb", "")),
-        "plex_url": PLEX_URL,
-    }
+def _match_type(item_type: str, media_type: str) -> bool:
+    if media_type == "movie":
+        return item_type == "movie"
+    if media_type == "tv":
+        return item_type in ("show", "series")
+    return False
 
 
 def search_plex(title: str, media_type: str = "movie", year: str = None, imdb_id: str = None) -> dict | None:
     """
-    Search Plex for a title.
-    Tries multiple strategies:
-    1. Search by English title
-    2. Search by year (if provided) to filter results
-    3. Search by IMDB ID via Plex's GUID matching
-
-    Returns dict {title, year, thumb, plex_url} or None.
+    Search Plex for a title using two strategies:
+    1. Text search (finds Hebrew titles via Original Title)
+    2. IMDB ID lookup (fallback)
+    Returns dict {title, year, thumb} or None.
     """
     if not PLEX_TOKEN:
         return None
 
-    # Strategy 1 — search by title
-    result = _search_by_query(title, media_type, year)
-    if result:
-        return result
-
-    # Strategy 2 — search by IMDB ID if available
-    if imdb_id:
-        result = _search_by_imdb(imdb_id, media_type)
-        if result:
-            return result
-
-    return None
-
-
-def _search_by_query(title: str, media_type: str, year: str = None) -> dict | None:
-    """Search Plex /search endpoint by title string."""
-    try:
-        resp = requests.get(
-            f"{PLEX_URL}/search",
-            params={"query": title},
-            headers=_headers(),
-            timeout=5,
-        )
-        items = resp.json().get("MediaContainer", {}).get("Metadata", [])
-
-        for item in items:
-            parsed = _parse_result(item, media_type)
-            if not parsed:
-                continue
-            # If year provided, verify it matches
-            if year and parsed["year"] and parsed["year"] != str(year):
-                continue
-            return parsed
-
-    except Exception:
-        pass
-    return None
-
-
-def _search_by_imdb(imdb_id: str, media_type: str) -> dict | None:
-    """
-    Search Plex library sections for a specific IMDB ID.
-    Useful when the title is in Hebrew or another language.
-    """
-    try:
-        # Get list of library sections
-        resp = requests.get(
-            f"{PLEX_URL}/library/sections",
-            headers=_headers(),
-            timeout=5,
-        )
-        sections = resp.json().get("MediaContainer", {}).get("Directory", [])
-
-        for section in sections:
-            sec_type = section.get("type", "")
-            if media_type == "movie" and sec_type != "movie":
-                continue
-            if media_type == "tv" and sec_type != "show":
-                continue
-
-            sec_key = section.get("key")
-            # Search this section by IMDB GUID
-            search_resp = requests.get(
-                f"{PLEX_URL}/library/sections/{sec_key}/all",
-                params={"guid": f"imdb://{imdb_id}"},
-                headers=_headers(),
-                timeout=5,
-            )
-            items = search_resp.json().get("MediaContainer", {}).get("Metadata", [])
-            if items:
-                item = items[0]
+    # Strategy 1 — text search
+    root = _get("search", {"query": title})
+    if root is not None:
+        for tag in ("Video", "Directory"):
+            for item in root.iter(tag):
+                item_type = item.get("type", "")
+                if not _match_type(item_type, media_type):
+                    continue
+                item_year = item.get("year", "")
+                if year and item_year and item_year != str(year):
+                    continue
                 return {
-                    "title": item.get("title", ""),
-                    "year": str(item.get("year", "")),
+                    "title": item.get("title", title),
+                    "year": item_year,
                     "thumb": _thumb_url(item.get("thumb", "")),
-                    "plex_url": PLEX_URL,
                 }
 
-    except Exception:
-        pass
+    # Strategy 2 — IMDB ID lookup per section
+    if imdb_id:
+        sections_root = _get("library/sections")
+        if sections_root is not None:
+            for section in sections_root.iter("Directory"):
+                sec_type = section.get("type", "")
+                if media_type == "movie" and sec_type != "movie":
+                    continue
+                if media_type == "tv" and sec_type != "show":
+                    continue
+                sec_key = section.get("key")
+                sec_root = _get(f"library/sections/{sec_key}/all", {"guid": f"imdb://{imdb_id}"})
+                if sec_root is None:
+                    continue
+                for tag in ("Video", "Directory"):
+                    for item in sec_root.iter(tag):
+                        return {
+                            "title": item.get("title", title),
+                            "year": item.get("year", ""),
+                            "thumb": _thumb_url(item.get("thumb", "")),
+                        }
+
     return None
 
 
