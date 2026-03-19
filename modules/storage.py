@@ -179,8 +179,7 @@ def get_activity(limit: int = 30) -> list:
     with open(LOG_FILE, "r", encoding="utf-8") as f:
         lines = f.readlines()
     results = []
-    # Read last N lines, reversed so newest is first
-    for line in list(reversed(lines))[:limit]:
+    for line in lines[-limit:]:
         line = line.strip()
         if not line:
             continue
