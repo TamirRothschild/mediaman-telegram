@@ -453,6 +453,33 @@ Admin
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
+
+async def debug_plex(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /debugplex <name>")
+        return
+
+    query = " ".join(context.args)
+
+    results = search_media(query)
+    if not results:
+        await update.message.reply_text("TMDb: No results found.")
+        return
+
+    for m in results:
+        plex = search_plex(m["title"], m["type"], year=m.get("year"), imdb_id=m.get("imdb_id"))
+        if plex:
+            await update.message.reply_text(
+                f"✅ Found on Plex!\n"
+                f"TMDb: {m['title']} ({m['year']})\n"
+                f"Plex: {plex['title']} ({plex['year']})"
+            )
+            return
+
+    await update.message.reply_text("❌ Not found on Plex.")
+
 def main():
     request = HTTPXRequest(connection_pool_size=8, read_timeout=30, write_timeout=30, connect_timeout=15, http_version="1.1")
     app = ApplicationBuilder().token(TOKEN).request(request).build()
@@ -469,6 +496,7 @@ def main():
     app.add_handler(CommandHandler("download_requests",  download_requests))
     app.add_handler(CommandHandler("requests_stats",      requests_stats))
     app.add_handler(CommandHandler("activity",            activity_log))
+    app.add_handler(CommandHandler("debugplex",           debug_plex))
 
     app.add_handler(CallbackQueryHandler(clear_callback,             pattern="^clear:"))
     app.add_handler(CallbackQueryHandler(delete_callback,            pattern="^del:"))
