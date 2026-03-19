@@ -80,7 +80,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     username = get_username(query.from_user)
     # Check Plex first
-    plex = search_plex(media["title"], media["type"])
+    plex = search_plex(media["title"], media["type"], year=media.get("year"), imdb_id=media.get("imdb_id"))
 
     details = get_movie_details(media["id"], media["type"])
     icon    = "🎬" if media["type"] == "movie" else "📺"

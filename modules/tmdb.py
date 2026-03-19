@@ -15,6 +15,13 @@ def search_media(query: str) -> list:
     results = []
     try:
         for r in requests.get(f"{BASE_URL}/search/movie", params=_p(query=query), timeout=10).json().get("results", [])[:5]:
+            # Fetch IMDB ID for better Plex matching
+            imdb_id = None
+            try:
+                ext = requests.get(f"{BASE_URL}/movie/{r['id']}/external_ids", params=_p(), timeout=5).json()
+                imdb_id = ext.get("imdb_id")
+            except Exception:
+                pass
             results.append({
                 "id": r["id"],
                 "title": r["title"],
@@ -22,11 +29,18 @@ def search_media(query: str) -> list:
                 "poster_path": r.get("poster_path"),
                 "rating": round(r.get("vote_average", 0), 1),
                 "type": "movie",
+                "imdb_id": imdb_id,
             })
     except Exception:
         pass
     try:
         for r in requests.get(f"{BASE_URL}/search/tv", params=_p(query=query), timeout=10).json().get("results", [])[:5]:
+            imdb_id = None
+            try:
+                ext = requests.get(f"{BASE_URL}/tv/{r['id']}/external_ids", params=_p(), timeout=5).json()
+                imdb_id = ext.get("imdb_id")
+            except Exception:
+                pass
             results.append({
                 "id": r["id"],
                 "title": r["name"],
@@ -34,6 +48,7 @@ def search_media(query: str) -> list:
                 "poster_path": r.get("poster_path"),
                 "rating": round(r.get("vote_average", 0), 1),
                 "type": "tv",
+                "imdb_id": imdb_id,
             })
     except Exception:
         pass
