@@ -9,6 +9,22 @@ PLEX_URL   = os.getenv("PLEX_URL", "http://192.168.1.166:32400")
 PLEX_TOKEN = os.getenv("PLEX_TOKEN", "")
 
 
+_machine_id = None
+
+def get_machine_id() -> str:
+    """Get Plex server machine identifier (cached)."""
+    global _machine_id
+    if _machine_id:
+        return _machine_id
+    try:
+        root = _get_xml("identity")
+        if root is not None:
+            _machine_id = root.get("machineIdentifier", "")
+    except Exception:
+        pass
+    return _machine_id or ""
+
+
 def _get_xml(endpoint: str, params: dict = {}) -> ET.Element | None:
     try:
         resp = requests.get(
@@ -215,13 +231,31 @@ def get_season_episodes(season_key: str) -> list | None:
     for item in episodes_root.iter("Video"):
         if item.get("type") == "episode":
             part = item.find(".//Part")
+            rating_key = item.get("ratingKey", "")
+            machine_id = get_machine_id()
+
+            # Plex Web/App URL — subtitles, quality selection, opens app on mobile
+            plex_web_url = (
+                f"{PLEX_URL}/web/index.html"
+                f"#!/server/{machine_id}/details"
+                f"?key=%2Flibrary%2Fmetadata%2F{rating_key}"
+                f"&X-Plex-Token={PLEX_TOKEN}"
+            )
+
+            # Direct file URL — works with VLC, MX Player, etc.
+            direct_url = (
+                f"{PLEX_URL}{part.get('key')}?X-Plex-Token={PLEX_TOKEN}"
+                if part is not None else None
+            )
+
             episodes.append({
-                "key": item.get("ratingKey"),
+                "key": rating_key,
                 "episode_num": int(item.get("index", 0)),
                 "title": item.get("title", f"Episode {item.get('index')}"),
                 "duration": int(item.get("duration", 0)) // 60000,  # minutes
                 "thumb": _thumb_url(item.get("thumb", "")),
-                "stream_url": f"{PLEX_URL}{part.get('key')}?X-Plex-Token={PLEX_TOKEN}" if part is not None else None,
+                "stream_url": plex_web_url,
+                "direct_url": direct_url,
                 "show": item.get("grandparentTitle", ""),
                 "season": int(item.get("parentIndex", 0)),
             })

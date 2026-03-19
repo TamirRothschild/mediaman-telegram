@@ -597,9 +597,11 @@ async def stream_episode_callback(update: Update, context: ContextTypes.DEFAULT_
         f"⏱ {ep['duration']}min"
     )
 
-    keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("▶️ Watch on Plex", url=ep["stream_url"])
-    ]])
+    # Build buttons — Plex player + direct file
+    buttons = [InlineKeyboardButton("▶️ Plex Player", url=ep["stream_url"])]
+    if ep.get("direct_url"):
+        buttons.append(InlineKeyboardButton("📁 Direct File", url=ep["direct_url"]))
+    keyboard = InlineKeyboardMarkup([buttons])
 
     if ep.get("thumb"):
         try:
