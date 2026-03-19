@@ -234,10 +234,9 @@ def get_season_episodes(season_key: str) -> list | None:
             rating_key = item.get("ratingKey", "")
             machine_id = get_machine_id()
 
-            # Plex Web/App URL — subtitles, quality selection, opens app on mobile
+            # app.plex.tv URL — opens Plex app on mobile if installed
             plex_web_url = (
-                f"{PLEX_URL}/web/index.html"
-                f"#!/server/{machine_id}/details"
+                f"https://app.plex.tv/desktop/#!/server/{machine_id}/details"
                 f"?key=%2Flibrary%2Fmetadata%2F{rating_key}"
                 f"&X-Plex-Token={PLEX_TOKEN}"
             )
