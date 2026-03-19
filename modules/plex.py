@@ -234,9 +234,14 @@ def get_season_episodes(season_key: str) -> list | None:
             rating_key = item.get("ratingKey", "")
             machine_id = get_machine_id()
 
-            # app.plex.tv URL — opens Plex app on mobile if installed
+            # Get plex:// GUID for native app deep link
+            guid = item.get("guid", "")  # e.g. plex://episode/5d9c...
+            plex_app_url = guid if guid.startswith("plex://") else None
+
+            # Web player URL
             plex_web_url = (
-                f"https://app.plex.tv/desktop/#!/server/{machine_id}/details"
+                f"{PLEX_URL}/web/index.html"
+                f"#!/server/{machine_id}/details"
                 f"?key=%2Flibrary%2Fmetadata%2F{rating_key}"
                 f"&X-Plex-Token={PLEX_TOKEN}"
             )
@@ -255,6 +260,7 @@ def get_season_episodes(season_key: str) -> list | None:
                 "thumb": _thumb_url(item.get("thumb", "")),
                 "stream_url": plex_web_url,
                 "direct_url": direct_url,
+                "plex_app_url": plex_app_url,
                 "show": item.get("grandparentTitle", ""),
                 "season": int(item.get("parentIndex", 0)),
                 "machine_id": machine_id,

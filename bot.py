@@ -603,15 +603,9 @@ async def stream_episode_callback(update: Update, context: ContextTypes.DEFAULT_
         buttons.append(InlineKeyboardButton("📁 Direct File", url=ep["direct_url"]))
     keyboard = InlineKeyboardMarkup([buttons])
 
-    # plex:// deep link for mobile app — sent as plain text so iOS/Android handle it
-    machine_id = ep.get("machine_id", "")
-    plex_app_link = (
-        f"plex://preplay/?metadataKey=%2Flibrary%2Fmetadata%2F{ep['key']}"
-        f"&server={ep.get('machine_id', '')}"
-    ) if ep.get("machine_id") else None
-
-    if plex_app_link:
-        text += f"\n\n📱 *Open in Plex app:*\n`{plex_app_link}`"
+    # plex:// deep link — works as clickable link on mobile to open Plex app
+    if ep.get("plex_app_url"):
+        text += f"\n\n📱 *Open in Plex app:*\n`{ep['plex_app_url']}`"
 
     if ep.get("thumb"):
         try:
