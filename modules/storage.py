@@ -1,60 +1,86 @@
 import os
-import json
+import sqlite3
+import logging
+from datetime import datetime
 
-# Path to JSON file for storing requests
-DATA_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "requests.json")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "..", "data")
+DB_FILE  = os.path.join(DATA_DIR, "mediaman.db")
+LOG_FILE = os.path.join(DATA_DIR, "activity.log")
 
-def load_requests():
-    """Load all requests from JSON file"""
-    if not os.path.exists(DATA_FILE):
-        return {}
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+os.makedirs(DATA_DIR, exist_ok=True)
 
-def save_requests(requests):
-    """Save all requests to JSON file"""
-    os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(requests, f, indent=2)
+activity_logger = logging.getLogger("activity")
+activity_logger.setLevel(logging.INFO)
+if not activity_logger.handlers:
+    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    fh.setFormatter(logging.Formatter("%(asctime)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+    activity_logger.addHandler(fh)
 
-def add_request(user_id, movie):
-    """
-    Add a movie request for a specific user
-    user_id: str or int
-    movie: dict with keys 'id', 'title', 'year'
-    """
-    requests = load_requests()
-    user_id = str(user_id)
-    if user_id not in requests:
-        requests[user_id] = []
-    # Avoid duplicates
-    if not any(m["id"] == movie["id"] for m in requests[user_id]):
-        requests[user_id].append(movie)
-    save_requests(requests)
+def log(message: str):
+    activity_logger.info(message)
 
-def get_user_requests(user_id):
-    """Return all requests for a specific user"""
-    requests = load_requests()
-    return requests.get(str(user_id), [])
+def _get_conn():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-def get_all_requests():
-    """Return all requests (for admin)"""
-    return load_requests()
+def init_db():
+    with _get_conn() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS requests (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id      TEXT NOT NULL,
+                username     TEXT,
+                media_id     TEXT NOT NULL,
+                title        TEXT NOT NULL,
+                year         TEXT,
+                media_type   TEXT,
+                requested_at TEXT NOT NULL,
+                UNIQUE(user_id, media_id)
+            )
+        """)
+        conn.commit()
+
+init_db()
+
+def add_request(user_id, movie: dict, username: str = None):
+    with _get_conn() as conn:
+        try:
+            conn.execute(
+                "INSERT INTO requests (user_id, username, media_id, title, year, media_type, requested_at) VALUES (?,?,?,?,?,?,?)",
+                (str(user_id), username, str(movie["id"]), movie["title"], movie.get("year",""), movie.get("type","movie"), datetime.now().isoformat()),
+            )
+            conn.commit()
+            log(f"REQUEST | user={username or user_id} | {movie['title']} ({movie.get('year','')})")
+        except sqlite3.IntegrityError:
+            pass
+
+def get_user_requests(user_id) -> list:
+    with _get_conn() as conn:
+        rows = conn.execute("SELECT * FROM requests WHERE user_id=? ORDER BY requested_at", (str(user_id),)).fetchall()
+    return [dict(r) for r in rows]
+
+def get_all_requests() -> dict:
+    with _get_conn() as conn:
+        rows = conn.execute("SELECT * FROM requests ORDER BY user_id, requested_at").fetchall()
+    result = {}
+    for r in rows:
+        r = dict(r)
+        uid = r["user_id"]
+        if uid not in result:
+            result[uid] = []
+        result[uid].append({"id": r["media_id"], "title": r["title"], "year": r["year"], "type": r["media_type"], "username": r["username"]})
+    return result
+
+def delete_user_request(user_id, media_id) -> bool:
+    with _get_conn() as conn:
+        cur = conn.execute("DELETE FROM requests WHERE user_id=? AND media_id=?", (str(user_id), str(media_id)))
+        conn.commit()
+    return cur.rowcount > 0
 
 def clear_all_requests():
-    """Delete all requests (admin)"""
-    save_requests({})
-
-def delete_user_request(user_id, movie_id):
-    """
-    Remove a movie from a user's requests by movie_id.
-    Returns True if removed, False if not found.
-    """
-    requests = load_requests()
-    user_id = str(user_id)
-    if user_id not in requests:
-        return False
-    original_len = len(requests[user_id])
-    requests[user_id] = [m for m in requests[user_id] if str(m["id"]) != str(movie_id)]
-    save_requests(requests)
-    return len(requests[user_id]) < original_len
+    with _get_conn() as conn:
+        conn.execute("DELETE FROM requests")
+        conn.commit()
+    log("ADMIN | Cleared all requests")

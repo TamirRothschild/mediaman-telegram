@@ -1,63 +1,182 @@
-# Telegram Media Manager Bot 🎬
+# MediaMan Telegram Bot 🎬
 
-A smart Telegram bot that allows users to search and request movies directly from chat. The bot uses the TMDb API to provide accurate search results, manages personal request lists, and includes administrator commands to manage the system.
+A Telegram bot for managing movie and series requests, with YTS search and direct Transmission integration.
 
-## Key Features ✨
-* **Smart Movie Search:** Search movies by title using the TMDb API.  
-* **Inline Keyboard Interface:** Users select movies from interactive buttons to prevent mistakes.  
-* **Personal Request Tracking:** Each user can view only their own requests.  
-* **Admin Commands:** Administrators can view all requests, clear requests, and manage the system.  
-* **Poster Support:** Sends movie posters when available for better visual feedback.  
+---
 
-## Prerequisites 📋
-* Python 3.8 or higher  
-* Telegram Bot Token from BotFather  
-* TMDb API Key  
+## Features ✨
 
-## Installation & Setup 🚀
+- 🔍 **Smart Search** — Search movies and TV shows via TMDb API
+- 📋 **Request Management** — Users submit requests, admin handles them
+- ⬇️ **YTS Integration** — Search and download torrents via YTS API
+- 🔗 **Transmission Integration** — Add torrents directly to Transmission
+- 📈 **Trending** — Browse trending movies and TV shows from TMDb
+- 🗃️ **SQLite Storage** — Reliable database with full activity logging
+- 🖼️ **Poster Support** — Movie posters shown throughout the UI
 
-1. **Clone the repository:**
+---
+
+## Project Structure
+
+```
+mediaman-bot/
+├── bot.py                  ← Main bot file
+├── requirements.txt        ← Python dependencies
+├── .env                    ← Environment variables (never commit this)
+├── .env.example            ← Template for environment variables
+├── .gitignore
+├── data/
+│   ├── mediaman.db         ← SQLite database (auto-created)
+│   └── mediaman.log        ← Activity log (auto-created)
+└── modules/
+    ├── tmdb.py             ← TMDb API (search, details, trending)
+    ├── yts.py              ← YTS API (search, magnet links)
+    └── storage.py          ← SQLite storage + activity log
+```
+
+---
+
+## Setup & Installation 🚀
+
+### 1. Clone the repository
+
 ```bash
-git clone https://github.com/TamirRothschild/telegram-movie-request-bot.git
-cd telegram-movie-request-bot
+git clone https://github.com/your-username/mediaman-bot.git
+cd mediaman-bot
 ```
 
-2. **Install required Python libraries:**
-```python 
-pip install python-telegram-bot requests python-dotenv
+### 2. Create virtual environment
+
+```bash
+python3 -m venv venv
+source venv/bin/activate        # Linux / macOS
+venv\Scripts\activate           # Windows
 ```
 
-3.	**Configure environment variables:**
-Create a .env file in the project root with the following:
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure environment variables
+
+Create a `.env` file in the project root:
+
 ```env
 TELEGRAM_TOKEN=your_bot_token_here
-ADMIN_IDS=123456789   # comma-separated list if multiple admins
-TMDB_API_KEY=your_tmdb_api_key_here
+ADMIN_IDS=123456789
+TMDB_API_KEY=your_tmdb_key_here
+TRANSMISSION_HOST=127.0.0.1:9091
+TRANSMISSION_USER=your_transmission_user
+TRANSMISSION_PASS=your_transmission_password
 ```
 
-4.	**Optional: Create an empty JSON storage file for requests:**
+| Variable | Description | Where to get it |
+|---|---|---|
+| `TELEGRAM_TOKEN` | Bot token | [@BotFather](https://t.me/BotFather) |
+| `ADMIN_IDS` | Comma-separated Telegram user IDs | [@userinfobot](https://t.me/userinfobot) |
+| `TMDB_API_KEY` | TMDb API key | [themoviedb.org](https://www.themoviedb.org/settings/api) |
+| `TRANSMISSION_HOST` | Transmission RPC address | Your Transmission settings |
+| `TRANSMISSION_USER` | Transmission RPC username | Your Transmission settings |
+| `TRANSMISSION_PASS` | Transmission RPC password | Your Transmission settings |
+
+### 5. Configure Transmission for remote access
+
+If the bot runs on a different machine than Transmission, edit `/etc/transmission-daemon/settings.json`:
+
+```json
+"rpc-whitelist-enabled": false,
+"rpc-bind-address": "0.0.0.0"
+```
+
+Then restart:
 ```bash
-mkdir -p data
-echo "{}" > data/requests.json
+sudo systemctl restart transmission-daemon
 ```
-5.	**Run the bot:**
+
+### 6. Run the bot
+
 ```bash
-python bot.py
+python3 bot.py
 ```
-##### For production, consider running the bot as a systemd service to keep it running in the background.
 
-## Available Commands 💬
+---
 
-### Standard User Commands:
-   * /request <movie name> - Search and request a new movie.
-   *	/my_requests - View your own requests and their statuses.
+## Running as a systemd Service (Linux)
 
-### Admin Commands:
-   *	/all_requests - View all requests from all users.
-   *	/clear_requests - Clear all stored requests.
+Create `/etc/systemd/system/mediaman.service`:
 
-### Future Improvements 🗺️
-   *	Migrate storage from JSON to SQLite for better performance with many users.
-   *	Integrate with Plex or Radarr to automatically fetch approved movies.
-   * 	Add logging for activity and errors.
-   *	Add user “Cancel Request” functionality.
+```ini
+[Unit]
+Description=MediaMan Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=your_username
+WorkingDirectory=/home/your_username/mediaman-bot
+ExecStart=/home/your_username/mediaman-bot/venv/bin/python bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable mediaman.service
+sudo systemctl start mediaman.service
+sudo systemctl status mediaman.service
+```
+
+---
+
+## Commands 💬
+
+### User Commands
+| Command | Description |
+|---|---|
+| `/request <name>` | Search and request a movie or series |
+| `/my_requests` | View your submitted requests |
+| `/delete_request` | Delete one of your requests |
+| `/trending` | Browse trending movies and TV shows |
+| `/help` | Show all available commands |
+
+### Admin Commands
+| Command | Description |
+|---|---|
+| `/all_requests` | View all requests from all users |
+| `/download_requests` | Multi-select requests and download via YTS |
+| `/download <name>` | Search YTS directly and download |
+| `/clear_requests` | Clear all requests (double confirmation) |
+| `/activity` | View recent activity log |
+
+---
+
+## Download Flow
+
+```
+/download_requests
+       ↓
+Select requests (⬜/✅ toggle)
+       ↓
+⬇️ Download Selected
+       ↓
+For each selected movie:
+  → Search YTS → Select correct match → Select quality
+       ↓
+✅ Added to Transmission
+```
+
+---
+
+## Future Improvements 🗺️
+
+- `/status` — Show active Transmission downloads with progress
+- Notify users when their requested movie has been added
+- Rate limiting — limit requests per user
+- `/delete_download` — Remove a torrent from Transmission via bot
