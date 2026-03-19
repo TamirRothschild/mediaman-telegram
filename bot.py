@@ -96,8 +96,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⭐ {details['rating']} | ⏱ {details['runtime']}\n"
             f"▶️ Open Plex and enjoy!"
         )
-        # Use Plex thumbnail first, fallback to TMDb poster
-        thumb = plex.get("thumb") or poster
+        # Always use TMDb poster for better quality
+        thumb = poster
         sent = False
         if thumb:
             try:
