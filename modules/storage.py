@@ -169,3 +169,22 @@ def get_stats() -> dict:
         "top_users": [dict(r) for r in top_users],
         "recent_downloads": [dict(r) for r in recent_downloads],
     }
+
+
+def get_activity(limit: int = 30) -> list:
+    """Return recent activity log entries from file."""
+    if not os.path.exists(LOG_FILE):
+        return []
+    with open(LOG_FILE, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    results = []
+    for line in reversed(lines[-limit:]):
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(" | ", 1)
+        results.append({
+            "timestamp": parts[0] if len(parts) > 1 else "",
+            "message": parts[1] if len(parts) > 1 else line,
+        })
+    return results

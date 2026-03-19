@@ -11,7 +11,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 from modules.tmdb import search_media, get_movie_details, get_trending
 from modules.plex import search_plex
 from modules.yts import search_yts
-from modules.storage import add_request, get_all_requests, clear_all_requests, get_user_requests, delete_user_request, delete_requests_by_title, get_requesters_by_title, log_download, get_stats, log
+from modules.storage import add_request, get_all_requests, clear_all_requests, get_user_requests, delete_user_request, delete_requests_by_title, get_requesters_by_title, log_download, get_stats, get_activity, log
 
 load_dotenv()
 
@@ -398,6 +398,21 @@ async def clear_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("All requests cleared ✅")
 
 
+
+async def activity_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("Not allowed.")
+        return
+    logs = get_activity(limit=30)
+    if not logs:
+        await update.message.reply_text("No activity yet.")
+        return
+    text = "📋 *Recent Activity:*\n\n"
+    for entry in logs:
+        ts    = entry["timestamp"][:16]
+        text += f"`{ts}` {entry['message']}\n"
+    await update.message.reply_text(text, parse_mode="Markdown")
+
 async def requests_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("Not allowed.")
@@ -433,7 +448,8 @@ Admin
 /download_requests     - select & download from requests list
 /download <n>          - search & download directly from YTS
 /clear_requests        - clear all requests
-/requests_stats        - stats & top requesters""")
+/requests_stats        - stats & top requesters
+/activity              - recent activity log""")
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -452,6 +468,7 @@ def main():
     app.add_handler(CommandHandler("download",           download_media))
     app.add_handler(CommandHandler("download_requests",  download_requests))
     app.add_handler(CommandHandler("requests_stats",      requests_stats))
+    app.add_handler(CommandHandler("activity",            activity_log))
 
     app.add_handler(CallbackQueryHandler(clear_callback,             pattern="^clear:"))
     app.add_handler(CallbackQueryHandler(delete_callback,            pattern="^del:"))
