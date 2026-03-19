@@ -180,7 +180,7 @@ def get_activity(limit: int = 30) -> list:
         lines = f.readlines()
     results = []
     # Read last N lines, reversed so newest is first
-    for line in reversed(lines)[:limit]:
+    for line in list(reversed(lines))[:limit]:
         line = line.strip()
         if not line:
             continue
