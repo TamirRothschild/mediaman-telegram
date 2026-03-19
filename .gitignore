@@ -9,3 +9,6 @@ __pycache__/
 
 # Ignore data storage if sensitive
 data/requests.json
+
+venv/
+modules/yts.py

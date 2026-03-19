@@ -1,4 +1,5 @@
 import os
+import subprocess
 from dotenv import load_dotenv
 import asyncio
 
@@ -12,6 +13,7 @@ from telegram.ext import (
 )
 
 from modules.tmdb import search_media
+from modules.yts import search_yts
 from modules.storage import (
     add_request,
     get_all_requests,
@@ -24,6 +26,9 @@ load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x]
+TRANSMISSION_HOST = os.getenv("TRANSMISSION_HOST", "127.0.0.1:9091")
+TRANSMISSION_USER = os.getenv("TRANSMISSION_USER", "tamir")
+TRANSMISSION_PASS = os.getenv("TRANSMISSION_PASS", "TamRoth12")
 
 
 # ---------- Admin check ----------
@@ -41,7 +46,6 @@ async def request_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     query = " ".join(context.args)
-
     results = search_media(query)
 
     if not results:
@@ -60,11 +64,9 @@ async def request_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for m in results[:8]
     ]
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
     await update.message.reply_text(
         "Select what you meant:",
-        reply_markup=reply_markup
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
@@ -75,7 +77,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     media_id = query.data
-
     media = None
 
     for m in context.user_data.get("last_search", []):
@@ -102,7 +103,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         poster = f"https://image.tmdb.org/t/p/w500{media['poster_path']}"
 
     icon = "🎬" if media["type"] == "movie" else "📺"
-
     text = f"{icon} Request saved:\n{media['title']} ({media['year']})"
 
     if poster:
@@ -112,7 +112,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
             except Exception:
                 if attempt == 2:
-                    await query.message.reply_text(text)  # fallback without image
+                    await query.message.reply_text(text)
                 await asyncio.sleep(2)
     else:
         await query.message.reply_text(text)
@@ -122,11 +122,153 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ---------- /download ----------
+async def download_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("Not allowed.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Use like this:\n/download Interstellar"
+        )
+        return
+
+    query = " ".join(context.args)
+    await update.message.reply_text(f"🔍 Searching YTS for: {query}")
+
+    results = search_yts(query)
+
+    if not results:
+        await update.message.reply_text("No results found on YTS.")
+        return
+
+    context.user_data["yts_search"] = results
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"🎬 {m['title']} ({m['year']}) ⭐{m['rating']}",
+                callback_data=f"yts:{m['id']}"
+            )
+        ]
+        for m in results[:8]
+    ]
+
+    await update.message.reply_text(
+        "Select a movie to download:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# ---------- YTS movie selection ----------
+async def yts_movie_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    if not is_admin(query.from_user.id):
+        await query.edit_message_text("Not allowed.")
+        return
+
+    movie_id = int(query.data.split(":")[1])
+    movie = None
+
+    for m in context.user_data.get("yts_search", []):
+        if m["id"] == movie_id:
+            movie = m
+            break
+
+    if not movie:
+        await query.edit_message_text("Movie not found.")
+        return
+
+    if not movie["torrents"]:
+        await query.edit_message_text("No torrents available for this movie.")
+        return
+
+    context.user_data["yts_selected"] = movie
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"📦 {t['quality']} — {t['size']}",
+                callback_data=f"ytsdl:{i}"
+            )
+        ]
+        for i, t in enumerate(movie["torrents"])
+    ]
+
+    await query.edit_message_text(
+        f"🎬 {movie['title']} ({movie['year']})\n\nSelect quality:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# ---------- YTS quality selection → add to transmission ----------
+async def yts_quality_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    if not is_admin(query.from_user.id):
+        await query.edit_message_text("Not allowed.")
+        return
+
+    torrent_index = int(query.data.split(":")[1])
+    movie = context.user_data.get("yts_selected")
+
+    if not movie:
+        await query.edit_message_text("Session expired, please search again.")
+        return
+
+    torrent = movie["torrents"][torrent_index]
+    magnet = torrent["magnet"]
+
+    await query.edit_message_text(
+        f"⏳ Adding to Transmission:\n{movie['title']} ({movie['year']}) — {torrent['quality']}"
+    )
+
+    try:
+        result = subprocess.run(
+            [
+                "transmission-remote", TRANSMISSION_HOST,
+                "--auth", f"{TRANSMISSION_USER}:{TRANSMISSION_PASS}",
+                "--add", magnet,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
+        if result.returncode == 0:
+            await query.message.reply_text(
+                f"✅ Added to Transmission!\n"
+                f"🎬 {movie['title']} ({movie['year']})\n"
+                f"📦 Quality: {torrent['quality']}\n"
+                f"💾 Size: {torrent['size']}"
+            )
+        else:
+            await query.message.reply_text(
+                f"❌ Failed to add torrent:\n{result.stderr or result.stdout}"
+            )
+
+    except FileNotFoundError:
+        await query.message.reply_text(
+            "❌ transmission-remote not found.\n"
+            "Install it with: sudo apt install transmission-cli"
+        )
+    except subprocess.TimeoutExpired:
+        await query.message.reply_text("❌ Transmission connection timed out.")
+    except Exception as e:
+        await query.message.reply_text(f"❌ Error: {e}")
+
+
 # ---------- My requests ----------
 async def my_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
-
     media = get_user_requests(user_id)
 
     if not media:
@@ -134,11 +276,8 @@ async def my_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = "Your requests:\n\n"
-
     for m in media:
-
         icon = "🎬" if m.get("type") == "movie" else "📺"
-
         text += f"{icon} {m['title']} ({m['year']})\n"
 
     await update.message.reply_text(text)
@@ -148,7 +287,6 @@ async def my_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def delete_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
-
     media = get_user_requests(user_id)
 
     if not media:
@@ -165,11 +303,9 @@ async def delete_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for m in media
     ]
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
     await update.message.reply_text(
         "Select request to delete:",
-        reply_markup=reply_markup
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
@@ -179,7 +315,6 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     media_id = query.data.split(":")[1]
-
     success = delete_user_request(query.from_user.id, media_id)
 
     if success:
@@ -203,11 +338,9 @@ async def all_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for user_id, media in data.items():
         username = media[0].get("username") if media and "username" in media[0] else f"User {user_id}"
         text += f"{username}\n"
-
         for m in media:
             icon = "🎬" if m.get("type") == "movie" else "📺"
             text += f" {icon} {m['title']} ({m['year']})\n"
-
         text += "\n"
 
     await update.message.reply_text(text)
@@ -223,10 +356,9 @@ async def clear_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("Yes ✅", callback_data="clear:1")],
         [InlineKeyboardButton("No ❌", callback_data="clear:cancel")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         "Are you sure you want to clear all requests?",
-        reply_markup=reply_markup
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
@@ -267,7 +399,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = """
 User commands
 
-/request <name> - search movie or series
+/request <n> - search movie or series
 /my_requests - show your requests
 /delete_request - delete request
 
@@ -275,8 +407,8 @@ Admin
 
 /all_requests
 /clear_requests
+/download <n> - search & download via YTS + Transmission
 """
-
     await update.message.reply_text(text)
 
 
@@ -298,9 +430,8 @@ def main():
         read_timeout=30,
         write_timeout=30,
         connect_timeout=15,
-        http_version="1.1",  # ← השינוי הקריטי, מכבה HTTP/2
+        http_version="1.1",
     )
-
     app = ApplicationBuilder().token(TOKEN).request(request).build()
 
     # User commands
@@ -313,15 +444,16 @@ def main():
     # Admin commands
     app.add_handler(CommandHandler("all_requests", all_requests))
     app.add_handler(CommandHandler("clear_requests", clear_requests))
-    app.add_handler(CallbackQueryHandler(clear_callback, pattern="^clear:"))
+    app.add_handler(CommandHandler("download", download_media))
 
     # Callback handlers
+    app.add_handler(CallbackQueryHandler(clear_callback, pattern="^clear:"))
     app.add_handler(CallbackQueryHandler(delete_callback, pattern="^del:"))
+    app.add_handler(CallbackQueryHandler(yts_movie_callback, pattern="^yts:"))
+    app.add_handler(CallbackQueryHandler(yts_quality_callback, pattern="^ytsdl:"))
     app.add_handler(CallbackQueryHandler(button_callback))
 
-    app.run_polling(
-        timeout=30,
-    )
+    app.run_polling(timeout=30)
 
 
 if __name__ == "__main__":
