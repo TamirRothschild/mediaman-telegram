@@ -497,20 +497,59 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     target = args[0].lower() if args else "bot"
 
-    if target == "server":
-        await update.message.reply_text("🔄 Rebooting server...")
-        subprocess.Popen(["sudo", "reboot"])
-
-    elif target == "bot":
-        await update.message.reply_text("🔄 Restarting bot service...")
-        subprocess.Popen(["sudo", "systemctl", "restart", "mediaman.service"])
-
-    else:
+    if target not in ("bot", "server"):
         await update.message.reply_text(
             "Usage:\n"
             "/restart — restart bot\n"
             "/restart server — reboot server"
         )
+        return
+
+    label = "bot service" if target == "bot" else "SERVER"
+    keyboard = [
+        [InlineKeyboardButton(f"Yes ✅", callback_data=f"rst1:{target}")],
+        [InlineKeyboardButton("No ❌", callback_data="rst:cancel")]
+    ]
+    await update.message.reply_text(
+        f"⚠️ Are you sure you want to restart the {label}?",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def restart_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if not is_admin(query.from_user.id):
+        return
+
+    data = query.data
+
+    if data == "rst:cancel":
+        await query.edit_message_text("Restart canceled ❌")
+        return
+
+    if data.startswith("rst1:"):
+        target = data.split(":")[1]
+        label = "bot service" if target == "bot" else "SERVER"
+        keyboard = [
+            [InlineKeyboardButton(f"Yes, really ✅", callback_data=f"rst2:{target}")],
+            [InlineKeyboardButton("No ❌", callback_data="rst:cancel")]
+        ]
+        await query.edit_message_text(
+            f"⚠️ Are you REALLY sure you want to restart the {label}?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    if data.startswith("rst2:"):
+        target = data.split(":")[1]
+        if target == "server":
+            await query.edit_message_text("🔄 Rebooting server...")
+            subprocess.Popen(["sudo", "reboot"])
+        else:
+            await query.edit_message_text("🔄 Restarting bot service...")
+            subprocess.Popen(["sudo", "systemctl", "restart", "mediaman.service"])
 
 def main():
     request = HTTPXRequest(connection_pool_size=8, read_timeout=30, write_timeout=30, connect_timeout=15, http_version="1.1")
@@ -530,6 +569,7 @@ def main():
     app.add_handler(CommandHandler("activity",            activity_log))
     app.add_handler(CommandHandler("debugplex",           debug_plex))
     app.add_handler(CommandHandler("restart",             restart_bot))
+    app.add_handler(CallbackQueryHandler(restart_callback, pattern="^rst"))
 
     app.add_handler(CallbackQueryHandler(clear_callback,             pattern="^clear:"))
     app.add_handler(CallbackQueryHandler(delete_callback,            pattern="^del:"))
