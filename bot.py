@@ -467,6 +467,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Admin
 
+/stream <show>         - browse & watch show episodes from Plex
+
+Admin
+
 /all_requests          - view all requests
 /download_requests     - select & download from requests list
 /download <n>          - search & download directly from YTS
@@ -474,8 +478,7 @@ Admin
 /requests_stats        - stats & top requesters
 /activity              - recent activity log
 /restart               - restart bot
-/restart server        - reboot server
-/stream <show>         - browse & watch show episodes from Plex""")
+/restart server        - reboot server""")
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -603,7 +606,7 @@ async def stream_episode_callback(update: Update, context: ContextTypes.DEFAULT_
         buttons.append(InlineKeyboardButton("📁 Direct File", url=ep["direct_url"]))
     keyboard = InlineKeyboardMarkup([buttons])
 
-    # plex:// deep link — works as clickable link on mobile to open Plex app
+    # plex:// deep link as plain text for mobile
     if ep.get("plex_app_url"):
         text += f"\n\n📱 *Open in Plex app:*\n`{ep['plex_app_url']}`"
 

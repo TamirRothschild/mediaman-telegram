@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-PLEX_URL   = os.getenv("PLEX_URL", "http://192.168.1.166:32400")
-PLEX_TOKEN = os.getenv("PLEX_TOKEN", "")
+PLEX_URL      = os.getenv("PLEX_URL", "http://192.168.1.166:32400")
+PLEX_TOKEN    = os.getenv("PLEX_TOKEN", "")
 
 
 _machine_id = None
