@@ -286,8 +286,7 @@ def get_movie_plex(title: str) -> dict | None:
         part = item.find(".//Part")
 
         plex_web_url = (
-            f"{PLEX_URL}/web/index.html"
-            f"#!/server/{machine_id}/details"
+            f"https://app.plex.tv/desktop/#!/server/{machine_id}/details"
             f"?key=%2Flibrary%2Fmetadata%2F{rating_key}"
             f"&X-Plex-Token={PLEX_TOKEN}"
         )
