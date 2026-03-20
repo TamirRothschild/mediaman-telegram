@@ -464,10 +464,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /my_requests      - show your requests
 /delete_request   - delete a request
 /trending         - show trending movies this week
-
-Admin
-
-/stream <show>         - browse & watch show episodes from Plex
+/stream <show>    - browse & watch show episodes from Plex
 
 Admin
 
