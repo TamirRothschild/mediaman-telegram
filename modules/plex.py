@@ -267,3 +267,45 @@ def get_season_episodes(season_key: str) -> list | None:
             })
 
     return sorted(episodes, key=lambda x: x["episode_num"])
+
+
+def get_movie_plex(title: str) -> dict | None:
+    """Search Plex for a movie and return stream info."""
+    root = _get_xml("search", {"query": title})
+    if root is None:
+        return None
+
+    machine_id = get_machine_id()
+
+    for item in root.iter():
+        if item.get("type") != "movie":
+            continue
+
+        rating_key = item.get("ratingKey", "")
+        guid = item.get("guid", "")
+        part = item.find(".//Part")
+
+        plex_web_url = (
+            f"{PLEX_URL}/web/index.html"
+            f"#!/server/{machine_id}/details"
+            f"?key=%2Flibrary%2Fmetadata%2F{rating_key}"
+            f"&X-Plex-Token={PLEX_TOKEN}"
+        )
+
+        direct_url = (
+            f"{PLEX_URL}{part.get('key')}?X-Plex-Token={PLEX_TOKEN}"
+            if part is not None else None
+        )
+
+        return {
+            "key": rating_key,
+            "title": item.get("title", title),
+            "year": item.get("year", ""),
+            "thumb": _thumb_url(item.get("thumb", "")),
+            "stream_url": plex_web_url,
+            "direct_url": direct_url,
+            "plex_app_url": guid if guid.startswith("plex://") else None,
+            "type": "movie",
+        }
+
+    return None

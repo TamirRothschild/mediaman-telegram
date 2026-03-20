@@ -9,7 +9,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 from modules.tmdb import search_media, get_movie_details, get_trending
-from modules.plex import search_plex, get_stream_url, get_episode_stream, get_show_seasons, get_season_episodes
+from modules.plex import search_plex, get_stream_url, get_episode_stream, get_show_seasons, get_season_episodes, get_movie_plex
 from modules.yts import search_yts
 from modules.storage import add_request, get_all_requests, clear_all_requests, get_user_requests, delete_user_request, delete_requests_by_title, get_requesters_by_title, log_download, get_stats, get_activity, log
 
@@ -509,14 +509,43 @@ async def debug_plex(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def stream_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Usage: /stream <show name>"""
+    """Usage: /stream <title>"""
     if not context.args:
-        await update.message.reply_text("Usage: /stream <show>\nExample: /stream Seinfeld")
+        await update.message.reply_text("Usage: /stream <title>\nExample: /stream Seinfeld\nExample: /stream Iron Man")
         return
 
     show = " ".join(context.args)
     await update.message.reply_text(f"🔍 Looking for {show} on Plex...")
 
+    # Try movie first
+    movie = get_movie_plex(show)
+    if movie:
+        text = (
+            f"🎬 *{movie['title']}* ({movie['year']})"
+        )
+        buttons = [InlineKeyboardButton("🖥 Watch on Web", url=movie["stream_url"])]
+        if movie.get("direct_url"):
+            buttons.append(InlineKeyboardButton("📁 Direct File", url=movie["direct_url"]))
+        keyboard = InlineKeyboardMarkup([buttons])
+
+        if movie.get("plex_app_url"):
+            text += f"\n\n📱 *Open in Plex app:*\n`{movie['plex_app_url']}`"
+
+        if movie.get("thumb"):
+            try:
+                await update.message.reply_photo(
+                    photo=movie["thumb"],
+                    caption=text,
+                    parse_mode="Markdown",
+                    reply_markup=keyboard
+                )
+                return
+            except Exception:
+                pass
+        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        return
+
+    # Try TV show
     seasons = get_show_seasons(show)
 
     if not seasons:
